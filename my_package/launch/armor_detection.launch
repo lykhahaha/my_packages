@@ -1,0 +1,25 @@
+<launch>
+	<arg name="color" default="blue"/>
+	<arg name="debug" default="true"/>
+	<arg name="mode" default="1"/>
+	<!-- 	mode = 0 for detection with LEDs + circle sticker, color specified
+				mode = 1 for detection with only circle sticker, using hsv, color specified
+				mode = 2 for detection with only circle sticker, using grayscale
+				* note: color is defined with topic /armor_detection/armor_color
+	-->
+
+		<node
+			pkg="base_vision"
+			type="armor_detection"
+			name="armor_detection"
+			required="true"
+			output="screen"
+		>
+		<param name="subscribed_image_topic" value="image_rect_color"/>
+		<param name="armor_color" value="$(arg color)"/>
+		<param name="mode" value="$(arg mode)"/>
+		<param name="debug" value="$(arg debug)"/>
+		<param name="published_topic" value="roi"/>
+
+		</node>
+</launch>

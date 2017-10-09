@@ -1,0 +1,30 @@
+<!-- -->
+<launch>
+
+  <!-- map params -->  
+  <arg name="voxel_leaf_size" default="0.0" />
+  <arg name="min_scan_range" default="2.0" />
+  <arg name="min_add_scan_shift" default="0.8" />
+  <!-- icp params -->
+  <arg name="maximum_iterations" default="200" />
+  <arg name="transformation_epsilon" default="0.00001" />
+  <arg name="max_correspondence_distance" default="0.5" />
+  <arg name="euclidean_fitness_epsilon" default="0.0001" />
+  <arg name="ransac_outlier_rejection_threshold" default="0.5" />
+
+  <!-- rosrun icp_mapping icp_mapping  -->
+  <node pkg="icp_mapping" type="queue_counter" name="queue_counter" output="screen" />
+  <node pkg="icp_mapping" type="icp_mapping" name="icp_mapping" output="screen">
+    <!-- map params -->
+    <param name="voxel_leaf_size" value="$(arg voxel_leaf_size)" />
+    <param name="min_scan_range" value="$(arg min_scan_range)" />
+    <param name="min_add_scan_shift" value="$(arg min_add_scan_shift)" />    
+    <!-- icp params -->
+    <param name="maximum_iterations" value="$(arg maximum_iterations)" />
+    <param name="transformation_epsilon" value="$(arg transformation_epsilon)" />
+    <param name="max_correspondence_distance" value="$(arg max_correspondence_distance)" />
+    <param name="euclidean_fitness_epsilon" value="$(arg euclidean_fitness_epsilon)" />
+    <param name="ransac_outlier_rejection_threshold" value="$(arg ransac_outlier_rejection_threshold)" />    
+  </node>
+  
+</launch>

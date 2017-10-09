@@ -1,0 +1,15 @@
+<launch>
+	<arg name="debug" default="true"/>
+	<node
+		pkg="base_vision"
+		type="matrix3x3board"
+		name="matrix3x3board"
+		required="true"
+		output="screen"
+	>
+	<param name="subscribed_image_topic" value="image_rect_color"/>
+	<param name="debug" value="$(arg debug)"/>
+	<param name="published_topic" value="matrix3x3board"/>
+
+	</node>
+</launch>

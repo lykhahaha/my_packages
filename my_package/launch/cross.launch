@@ -1,0 +1,15 @@
+<launch>
+	<arg name="debug" default="true"/>
+	<node
+		pkg="base_vision"
+		type="cross"
+		name="cross"
+		required="true"
+		output="screen"
+	>
+	<param name="subscribed_image_topic" value="image_rect_color"/>
+	<param name="debug" value="$(arg debug)"/>
+	<param name="published_topic" value="roi"/>
+
+	</node>
+</launch>

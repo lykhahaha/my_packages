@@ -1,0 +1,16 @@
+<launch>
+	<arg name="debug" default="true"/>
+
+	<group>
+		<node
+			pkg="my_gps_visualization"
+			type="gps2img"
+			name="gps2img"
+			required="true"
+			output="screen"
+		>
+		<param name="published_topic" value="my_gps_visualization"/>
+
+		</node>
+	</group>
+</launch>

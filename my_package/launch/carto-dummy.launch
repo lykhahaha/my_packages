@@ -1,0 +1,21 @@
+<!-- my
+-->
+<launch>
+		<node
+			pkg="my_package"
+			type="imu_publisher"
+			name="imu_publisher"
+			required="true"
+			output="screen"
+		>
+		</node>
+		
+		<node
+			pkg="my_package"
+			type="cloud_frame_conversion"
+			name="cloud_frame_conversion"
+			required="true"
+			output="screen"
+		>
+		</node>
+</launch>

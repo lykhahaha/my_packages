@@ -1,0 +1,19 @@
+<launch>
+	<arg name="debug" default="true"/>
+
+	<group>
+		<node
+			pkg="base_vision"
+			type="matcher"
+			name="matcher"
+			required="true"
+			output="screen"
+		>
+		<param name="subscribed_arrow_topic" value="arrow"/>
+		<param name="subscribed_laser_topic" value="laser"/>
+		<param name="debug" value="$(arg debug)"/>
+		<param name="published_topic" value="destination"/>
+
+		</node>
+	</group>
+</launch>

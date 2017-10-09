@@ -1,0 +1,16 @@
+<launch>
+	<arg name="image" default="11.png"/>
+	<arg name="output" default="image_rect_color"/>
+	<group>
+		<node
+			pkg="base_vision"
+			type="image_publisher"
+			name="image"
+			required="true"
+			output="screen"
+		>
+		<param name="image_file" value="/home/echo/Desktop/VMShare/$(arg image)"/>
+		<param name="output" value="$(arg output)"/>
+		</node>
+	</group>
+</launch>
