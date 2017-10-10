@@ -16,7 +16,7 @@ int main(int argc, char** argv)
   // Initiate and get csv file
   ros::init(argc, argv, "submap_merger");
 
-	std::string tf_map_csv_file_name = "map_pose2.csv";
+	std::string tf_map_csv_file_name = "map_pose.csv";
 	std::ifstream csv_stream(tf_map_csv_file_name);
   std::cout << "Processing " << tf_map_csv_file_name << std::endl;
 

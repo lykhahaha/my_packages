@@ -37,12 +37,12 @@ SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -fopenmp -Wall ${CMAKE_CXX_FLAGS}")
 
 #add_executable(ndt_matching src/ndt_matching.cpp)
 add_executable(mndt src/mndt.cpp)
-#add_executable(ndt_mapping src/ndt_mapping.cpp)
+add_executable(ndt_mapping src/ndt_mapping.cpp)
 
 #target_link_libraries(ndt_matching ${catkin_LIBRARIES})
 target_link_libraries(mndt ${catkin_LIBRARIES})
-#target_link_libraries(ndt_mapping ${catkin_LIBRARIES})
+target_link_libraries(ndt_mapping ${catkin_LIBRARIES})
 
 #add_dependencies(ndt_matching autoware_msgs_generate_messages_cpp)
 add_dependencies(mndt ${catkin_LIBRARIES})
-#add_dependencies(ndt_mapping autoware_msgs_generate_messages_cpp)
+add_dependencies(ndt_mapping autoware_msgs_generate_messages_cpp)

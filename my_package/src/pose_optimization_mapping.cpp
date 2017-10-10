@@ -124,7 +124,7 @@ int main(int argc, char** argv)
 	// Get data from csv and pcd
 #ifdef OUTPUT_POSE
   std::ofstream inp;
-  std::string in_file = "initial_pose@9oct-0854.csv";
+  std::string in_file = "initial_pose@10oct-1200.csv";
   inp.open(in_file);
   inp << "x,y,z,roll,pitch,yaw" << std::endl;
 #endif // OUTPUT_POSE
@@ -178,9 +178,9 @@ int main(int argc, char** argv)
 	}
 
 	// Ground-truth pose for the final scan
-	Eigen::Vector3d final_scan_p(-76.582, -0.7804, 3.58456);
+	Eigen::Vector3d final_scan_p(-74.2269, 14.2863, 3.40642);
 	tf::Quaternion final_q;
-	final_q.setRPY(0.0599305, -0.0247047, 1.6297);
+	final_q.setRPY(0.0418069, -0.0479844, 1.64459);
 	Eigen::Quaterniond final_scan_q(final_q.w(), final_q.x(), final_q.y(), final_q.z());
   Pose3d end_corrected_pose(final_scan_p, final_scan_q);
 
@@ -190,7 +190,7 @@ int main(int argc, char** argv)
   // Re-map with optimized pose
 #ifdef OUTPUT_POSE  // Also, output pose.txt 
   std::ofstream outp;
-  std::string out_file = "optimized_pose@9oct-0854.csv";
+  std::string out_file = "optimized_pose@10oct-1200.csv";
   outp.open(out_file);
   outp << "x,y,z,roll,pitch,yaw" << std::endl;
 #endif // OUTPUT_POSE

@@ -47,8 +47,10 @@
 #include <boost/foreach.hpp>
 
 #include <ros/ros.h>
-#include <ros/rosbag.h>
-#include <ros/view.h>
+#include <rosbag/bag.h>
+#include <rosbag/view.h>
+#include <ros/time.h>
+#include <ros/duration.h>
 #include <signal.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Float32.h>
@@ -511,7 +513,11 @@ int main(int argc, char** argv)
 
   // setting parameters
   std::string _bag_file;
+  float _start_time, _play_duration;
+
   private_nh.getParam("bag_file", _bag_file);
+  private_nh.getParam("start_time", _start_time);
+  private_nh.getParam("play_duration", _play_duration);
   private_nh.getParam("resolution", ndt_res);
   private_nh.getParam("step_size", step_size);  
   private_nh.getParam("transformation_epsilon", trans_eps);
@@ -527,6 +533,9 @@ int main(int argc, char** argv)
   private_nh.getParam("tf_yaw", _tf_yaw);
 
   std::cout << "NDT Mapping Parameters:" << std::endl;
+  std::cout << "bag_file: " << _bag_file << std::endl;
+  std::cout << "start_time: " << _start_time << std::endl;
+  std::cout << "play_duration: " << _play_duration << std::endl;
   std::cout << "ndt_res: " << ndt_res << std::endl;
   std::cout << "step_size: " << step_size << std::endl;
   std::cout << "trans_epsilon: " << trans_eps << std::endl;
@@ -562,10 +571,25 @@ int main(int argc, char** argv)
   // Open bagfile
   rosbag::Bag bag(_bag_file, rosbag::bagmode::Read);
   std::vector<std::string> reading_topics = {"points_raw"};
-  rosbag::View view(bag, rosbag::TopicQuery(reading_topics));
-
+  ros::Time rosbag_start_time = ros::TIME_MAX;
+  ros::Time rosbag_stop_time = ros::TIME_MIN;
+  if(_play_duration <= 0)
+  {
+    rosbag::View tmp_view(bag);
+    rosbag_start_time = tmp_view.getBeginTime();
+    rosbag_stop_time = ros::TIME_MAX;
+  }
+  else
+  {
+    rosbag::View tmp_view(bag);
+    rosbag_start_time = tmp_view.getBeginTime();
+    ros::Duration sim_duration(_play_duration);
+    rosbag_stop_time = rosbag_start_time + sim_duration;
+    
+  }
+  rosbag::View view(bag, rosbag::TopicQuery(reading_topics), rosbag_start_time, rosbag_stop_time);
   // Looping, processing messages in bag file
-  BOOST_FOREACH(rosbag::MessageInstace const message, view)
+  BOOST_FOREACH(rosbag::MessageInstance const message, view)
   {
     sensor_msgs::PointCloud2::ConstPtr input_cloud = message.instantiate<sensor_msgs::PointCloud2>();
     if(input_cloud == NULL)

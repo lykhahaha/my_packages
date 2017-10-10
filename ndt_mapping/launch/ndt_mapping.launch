@@ -3,6 +3,8 @@
 
   <!-- send table.xml to param server -->
   <arg name="bag" />
+  <arg name="start_time" default="0" /> <!-- all timings are in seconds -->
+  <arg name="play_duration" default="-1" /> <!-- set negative to play all -->
   <arg name="namespace" default="" />
   <arg name="resolution" default="2.8"/>
   <arg name="step_size" default="0.05"/>
@@ -24,6 +26,8 @@
   <node pkg="ndt_mapping" type="queue_counter" name="queue_counter" output="screen" ns="$(arg namespace)" />
   <node pkg="ndt_mapping" type="ndt_mapping" name="ndt_mapping" output="screen" ns="$(arg namespace)" >
   	<param name="bag_file" value="$(arg bag)" />
+  	<param name="start_time" value="$(arg start_time)" />
+  	<param name="play_duration" value="$(arg play_duration)" />
   	<param name="resolution" value="$(arg resolution)" />
   	<param name="step_size" value="$(arg step_size)" />
   	<param name="transformation_epsilon" value="$(arg transformation_epsilon)" />
