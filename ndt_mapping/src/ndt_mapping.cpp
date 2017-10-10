@@ -44,13 +44,14 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <boost/foreach.hpp>
 
 #include <ros/ros.h>
+#include <ros/rosbag.h>
+#include <ros/view.h>
 #include <signal.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Float32.h>
-#include <nav_msgs/Odometry.h>
-#include <sensor_msgs/Imu.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <velodyne_pointcloud/point_types.h>
 #include <velodyne_pointcloud/rawdata.h>
@@ -60,17 +61,11 @@
 
 #include <pcl/io/io.h>
 #include <pcl/io/pcd_io.h>
-#include <pcl/io/ply_io.h>
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 
-#ifdef USE_FAST_PCL
-#include <fast_pcl/registration/ndt.h>
-#include <fast_pcl/filters/voxel_grid.h>
-#else
 #include <pcl/registration/ndt.h>
 #include <pcl/filters/voxel_grid.h>
-#endif
 
 #include <autoware_msgs/ConfigNdtMapping.h>
 #include <autoware_msgs/ConfigNdtMappingOutput.h>
@@ -82,8 +77,6 @@
 static int k = 0; // key frame count
 
 #ifdef MY_EXTRACT_SCANPOSE
-// #include <autoware_msgs/tfMap.h>
-// ros::Publisher tf_map_pub;
 std::ofstream tf_map_csv_file;
 std::string tf_map_csv_file_name = "/home/zwu/catkin_ws/src/ndt_mapping/scan_extract/map_pose.csv";
 #endif // MY_EXTRACT_SCANPOSE
@@ -107,6 +100,11 @@ struct Key
 bool operator==(const Key& lhs, const Key& rhs)
 {
     return lhs.x == rhs.x && lhs.y == rhs.y;
+}
+
+bool operator!=(const Key& lhs, const Key& rhs)
+{
+    return lhs.x != rhs.x || lhs.y != rhs.y;
 }
 
 namespace std
@@ -138,22 +136,21 @@ static std::unordered_map<Key, pcl::PointCloud<pcl::PointXYZI>> world_map;
 // static pcl::PointCloud<pcl::PointXYZI> map;
 static pcl::PointCloud<pcl::PointXYZI> local_map;
 static std::mutex mtx;
+static Key local_key, previous_key;
 
 static pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI> ndt;
 // Default values
 static int max_iter = 300;       // Maximum iterations
-static float ndt_res = 2.0;      // Resolution
-static double step_size = 0.1;   // Step size
-static double trans_eps = 0.01;  // Transformation epsilon
+static float ndt_res = 2.8;      // Resolution
+static double step_size = 0.05;   // Step size
+static double trans_eps = 0.001;  // Transformation epsilon
 
 // Leaf size of VoxelGrid filter.
-static double voxel_leaf_size = 1.0;
+static double voxel_leaf_size = 0.1;
 
 static ros::Publisher ndt_map_pub;
 
 static int initial_scan_loaded = 0;
-
-static Eigen::Matrix4f gnss_transform = Eigen::Matrix4f::Identity();
 
 static double min_scan_range = 2.0;
 static double min_add_scan_shift = 1.0;
@@ -162,34 +159,8 @@ static double _tf_x, _tf_y, _tf_z, _tf_roll, _tf_pitch, _tf_yaw;
 static Eigen::Matrix4f tf_btol, tf_ltob;
 
 static bool isMapUpdate = true;
-static bool _use_openmp = false;
-static bool _use_imu = false;
-static bool _use_odom = false;
-static bool _imu_upside_down = false;
-static std::string _imu_topic = "/imu_raw";
 
 static double fitness_score;
-
-static void param_callback(const autoware_msgs::ConfigNdtMapping::ConstPtr& input)
-{
-
-  ndt_res = input->resolution;
-  step_size = input->step_size;
-  trans_eps = input->trans_epsilon;
-  max_iter = input->max_iterations;
-  voxel_leaf_size = input->leaf_size;
-  min_scan_range = input->min_scan_range;
-  min_add_scan_shift = input->min_add_scan_shift;
-
-  std::cout << "param_callback" << std::endl;
-  std::cout << "ndt_res: " << ndt_res << std::endl;
-  std::cout << "step_size: " << step_size << std::endl;
-  std::cout << "trans_epsilon: " << trans_eps << std::endl;
-  std::cout << "max_iter: " << max_iter << std::endl;
-  std::cout << "voxel_leaf_size: " << voxel_leaf_size << std::endl;
-  std::cout << "min_scan_range: " << min_scan_range << std::endl;
-  std::cout << "min_add_scan_shift: " << min_add_scan_shift << std::endl;
-}
 
 // Function to set z, roll, pitch of ndt-mapping = 0 at all times
 #ifdef MY_DESLANT_TRANSFORM
@@ -305,20 +276,10 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
       (init_translation * init_rotation_z * init_rotation_y * init_rotation_x).matrix() * tf_btol;
 
   pcl::PointCloud<pcl::PointXYZI>::Ptr output_cloud(new pcl::PointCloud<pcl::PointXYZI>);
-#ifdef USE_FAST_PCL
-  if (_use_openmp == true)
-  {
-    ndt.omp_align(*output_cloud, init_guess);
-    fitness_score = ndt.omp_getFitnessScore();
-  }
-  else
-  {
-#endif
-    ndt.align(*output_cloud, init_guess);
-    fitness_score = ndt.getFitnessScore();
-#ifdef USE_FAST_PCL
-  }
-#endif
+
+  ndt.align(*output_cloud, init_guess);
+  fitness_score = ndt.getFitnessScore();
+
   t_localizer = ndt.getFinalTransformation();
 
   //Do de-slant (setting z, roll, pitch = 0) for transformer here
@@ -379,7 +340,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
 #ifdef MY_EXTRACT_SCANPOSE
     static double pcd_count = 1;
     std::ostringstream scan_name;
-    scan_name << "/home/zwu/catkin_ws/src/ndt_mapping/scan_extract/scan" << pcd_count << ".pcd";
+    scan_name << "/home/zwu/catkin_ws/src/my_packages/ndt_mapping/scan_extract/scan" << pcd_count << ".pcd";
     std::string filename = scan_name.str();
     pcd_count++;
     pcl::io::savePCDFileBinary(filename, *scan_ptr);
@@ -450,46 +411,29 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
 static void map_maintenance_callback(pose local_pose)
 {
   // Get local_key
-  Key local_key = {int(floor(local_pose.x / TILE_WIDTH)),  // .x
-                   int(floor(local_pose.y / TILE_WIDTH))}; // .y
-  static Key previous_key = {0, 0};
+  local_key = {int(floor(local_pose.x / TILE_WIDTH)),  // .x
+               int(floor(local_pose.y / TILE_WIDTH))}; // .y
   // local_key.x = int(floor(local_pose.x / TILE_WIDTH));
   // local_key.y = int(floor(local_pose.y / TILE_WIDTH));
 
   // Only need to update local_map through world_map only if local_key changes
-  if(local_key == previous_key)
-    return;
-  else
+  if(local_key != previous_key)
   {
     std::lock_guard<std::mutex> lck(mtx);
     // Get local_map, a 3x3 tile map with the center being the local_key
     local_map.clear();
     Key tmp_key;
-    for(int x = local_key.x - 1; x <= local_key.x; x++)
-      for(int y = local_key.y - 1; y <= local_key.y; y++)
+    for(int x = local_key.x - 1; x <= local_key.x + 1; x++)
+      for(int y = local_key.y - 1; y <= local_key.y + 1; y++)
       {
         tmp_key.x = x;
         tmp_key.y = y;
         local_map += world_map[tmp_key];
       }
   }
-}
 
-// Global callback to call scans process and submap process
-static void points_callback(const sensor_msgs::PointCloud2::ConstPtr& input)
-{
-  #pragma omp parallel sections
-  {
-    #pragma omp section
-    {
-      ndt_mapping_callback(input);
-    }
-    #pragma omp section
-    {
-      //using current_pose as local_pose to get local_map
-      map_maintenance_callback(current_pose);
-    }
-  }
+  // Update key
+  previous_key = local_key;
 }
 
 void mySigintHandler(int sig) // Publish the map/final_submap if node is terminated
@@ -498,7 +442,7 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
   std::time_t now = std::time(NULL);
   std::tm* pnow = std::localtime(&now);
   std::strftime(buffer, 80, "%Y%m%d_%H%M%S", pnow);
-  std::string filename = "/home/zwu/catkin_ws/src/ndt_mapping/scan_extract/map_" + std::string(buffer) + ".pcd";
+  std::string filename = "/home/zwu/catkin_ws/src/my_packages/ndt_mapping/scan_extract/map_" + std::string(buffer) + ".pcd";
   std::cout << "-----------------------------------------------------------------\n";
   std::cout << "Writing the last map to pcd file before shutting down node..." << std::endl;
 
@@ -566,49 +510,30 @@ int main(int argc, char** argv)
   ros::NodeHandle private_nh("~");
 
   // setting parameters
-  private_nh.getParam("use_openmp", _use_openmp);
-  private_nh.getParam("use_imu", _use_imu);
-  private_nh.getParam("use_odom", _use_odom);
-  private_nh.getParam("imu_upside_down", _imu_upside_down);
-  private_nh.getParam("imu_topic", _imu_topic);
+  std::string _bag_file;
+  private_nh.getParam("bag_file", _bag_file);
+  private_nh.getParam("resolution", ndt_res);
+  private_nh.getParam("step_size", step_size);  
+  private_nh.getParam("transformation_epsilon", trans_eps);
+  private_nh.getParam("max_iteration", max_iter);
+  private_nh.getParam("voxel_leaf_size", voxel_leaf_size);
+  private_nh.getParam("min_scan_range", min_scan_range);
+  private_nh.getParam("min_add_scan_shift", min_add_scan_shift);
+  private_nh.getParam("tf_x", _tf_x);
+  private_nh.getParam("tf_y", _tf_y);
+  private_nh.getParam("tf_z", _tf_z);
+  private_nh.getParam("tf_roll", _tf_roll);
+  private_nh.getParam("tf_pitch", _tf_pitch);
+  private_nh.getParam("tf_yaw", _tf_yaw);
 
-  std::cout << "use_openmp: " << _use_openmp << std::endl;
-  std::cout << "use_imu: " << _use_imu << std::endl;
-  std::cout << "imu_upside_down: " << _imu_upside_down << std::endl;
-  std::cout << "use_odom: " << _use_odom << std::endl;
-  std::cout << "imu_topic: " << _imu_topic << std::endl;
-
-  if (nh.getParam("tf_x", _tf_x) == false)
-  {
-    std::cout << "tf_x is not set." << std::endl;
-    return 1;
-  }
-  if (nh.getParam("tf_y", _tf_y) == false)
-  {
-    std::cout << "tf_y is not set." << std::endl;
-    return 1;
-  }
-  if (nh.getParam("tf_z", _tf_z) == false)
-  {
-    std::cout << "tf_z is not set." << std::endl;
-    return 1;
-  }
-  if (nh.getParam("tf_roll", _tf_roll) == false)
-  {
-    std::cout << "tf_roll is not set." << std::endl;
-    return 1;
-  }
-  if (nh.getParam("tf_pitch", _tf_pitch) == false)
-  {
-    std::cout << "tf_pitch is not set." << std::endl;
-    return 1;
-  }
-  if (nh.getParam("tf_yaw", _tf_yaw) == false)
-  {
-    std::cout << "tf_yaw is not set." << std::endl;
-    return 1;
-  }
-  // _tf_z = 0; // Cant find the config file, it's always set to -2, so fix
+  std::cout << "NDT Mapping Parameters:" << std::endl;
+  std::cout << "ndt_res: " << ndt_res << std::endl;
+  std::cout << "step_size: " << step_size << std::endl;
+  std::cout << "trans_epsilon: " << trans_eps << std::endl;
+  std::cout << "max_iter: " << max_iter << std::endl;
+  std::cout << "voxel_leaf_size: " << voxel_leaf_size << std::endl;
+  std::cout << "min_scan_range: " << min_scan_range << std::endl;
+  std::cout << "min_add_scan_shift: " << min_add_scan_shift << std::endl;
   std::cout << "(tf_x,tf_y,tf_z,tf_roll,tf_pitch,tf_yaw): (" << _tf_x << ", " << _tf_y << ", " << _tf_z << ", "
             << _tf_roll << ", " << _tf_pitch << ", " << _tf_yaw << ")" << std::endl;
 
@@ -634,8 +559,36 @@ int main(int argc, char** argv)
                   << "," << "roll" << "," << "pitch" << "," << "yaw" << std::endl;
 #endif // MY_EXTRACT_SCANPOSE
 
-  ros::Subscriber param_sub = nh.subscribe("config/ndt_mapping", 10, param_callback);
-  ros::Subscriber points_sub = nh.subscribe("points_raw", 100000, points_callback);
+  // Open bagfile
+  rosbag::Bag bag(_bag_file, rosbag::bagmode::Read);
+  std::vector<std::string> reading_topics = {"points_raw"};
+  rosbag::View view(bag, rosbag::TopicQuery(reading_topics));
+
+  // Looping, processing messages in bag file
+  BOOST_FOREACH(rosbag::MessageInstace const message, view)
+  {
+    sensor_msgs::PointCloud2::ConstPtr input_cloud = message.instantiate<sensor_msgs::PointCloud2>();
+    if(input_cloud == NULL)
+    {
+      std::cout << "No input PointCloud available. Waiting..." << std::endl;
+      continue;
+    }
+
+    // Global callback to call scans process and submap process
+    #pragma omp parallel sections
+    {
+      #pragma omp section
+      {
+        ndt_mapping_callback(input_cloud);
+      }
+      #pragma omp section
+      {
+        //using current_pose as local_pose to get local_map
+        map_maintenance_callback(current_pose);
+      }
+    }
+  }
+  bag.close();
 
   ros::spin();
 

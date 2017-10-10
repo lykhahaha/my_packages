@@ -126,6 +126,7 @@ int main(int argc, char** argv)
   std::ofstream inp;
   std::string in_file = "initial_pose@9oct-0854.csv";
   inp.open(in_file);
+  inp << "x,y,z,roll,pitch,yaw" << std::endl;
 #endif // OUTPUT_POSE
 	std::vector< pcl::PointCloud<pcl::PointXYZI> > all_scans;
   while(getline(csv_stream, line))
@@ -172,7 +173,7 @@ int main(int argc, char** argv)
     std::cout << "---------------------------------------" << std::endl;
 
 #ifdef OUTPUT_POSE
-    inp << x << "," << y << "," << z << std::endl;
+    inp << x << "," << y << "," << z << "," << roll << "," << pitch << "," << yaw << std::endl;
 #endif // OUTPUT_POSE
 	}
 
@@ -191,7 +192,7 @@ int main(int argc, char** argv)
   std::ofstream outp;
   std::string out_file = "optimized_pose@9oct-0854.csv";
   outp.open(out_file);
-  outp << 'x' << ',' << 'y' << ',' << 'z' << std::endl;
+  outp << "x,y,z,roll,pitch,yaw" << std::endl;
 #endif // OUTPUT_POSE
 
   if(all_scans.size() != corrected_sim3.size())
@@ -225,7 +226,7 @@ int main(int argc, char** argv)
   	map += dst;
 
 #ifdef OUTPUT_POSE // to .txt
-    outp << x << "," << y << "," << z << std::endl;
+    outp << x << "," << y << "," << z << "," << roll << "," << pitch << "," << yaw << std::endl;
 #endif // OUTPUT_POSE
   }
 
