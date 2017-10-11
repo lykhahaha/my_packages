@@ -79,13 +79,19 @@
 // Here are the functions I wrote. De-comment to use
 #define TILE_WIDTH 100
 // #define MY_DESLANT_TRANSFORM // set z, roll, pitch to 0
-// #define MY_EXTRACT_SCANPOSE // do not use this, this is to extract scans and poses to close loop
+#define MY_OUTPUT_DATA_CSV
+#define MY_EXTRACT_SCANPOSE // do not use this, this is to extract scans and poses to close loop
 static int k = 0; // key frame count
 
 #ifdef MY_EXTRACT_SCANPOSE
 std::ofstream tf_map_csv_file;
 std::string tf_map_csv_file_name = "map_pose.csv";
 #endif // MY_EXTRACT_SCANPOSE
+
+#ifdef MY_OUTPUT_DATA_CSV
+std::ofstream output_csv_file;
+std::string csv_file_name = "allpose_data.csv";
+#endif
 
 struct pose
 {
@@ -347,6 +353,11 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   diff_yaw = current_pose.yaw - previous_pose.yaw;
   diff = sqrt(diff_x * diff_x + diff_y * diff_y + diff_z * diff_z);
 
+#ifdef MY_OUTPUT_DATA_CSV // write data to file regardless of adding new scan
+    output_csv_file << current_scan_time.sec << "." << current_scan_time.nsec << "," // timestamp
+                    << current_pose.x << "," << current_pose.y << "," << current_pose.z << "," // x, y, z w.r.t. global map (global frame)
+                    << current_pose.roll << "," << current_pose.pitch << "," << current_pose.yaw << std::endl; // r, p, y w.r.t. global (global frame)
+#endif
   
   // Calculate the shift between added_pos and current_pos
   double shift = sqrt(pow(current_pose.x - added_pose.x, 2.0) + pow(current_pose.y - added_pose.y, 2.0));
@@ -574,19 +585,23 @@ int main(int argc, char** argv)
 
   ndt_map_pub = nh.advertise<sensor_msgs::PointCloud2>("/ndt_map", 1000, true);
 
-  work_directory = ros::package::getPath("ndt_mapping") + "/scan_extract/";
+  work_directory = ros::package::getPath("ndt_mapping") + "/results/new/";
+
+#ifdef MY_OUTPUT_DATA_CSV
+  output_csv_file.open(work_directory + csv_file_name);
+  output_csv_file << "rostime,x,y,z,roll,pitch,yaw" << std::endl;//write file headers
+#endif // MY_OUTPUT_DATA_CSV
 
 #ifdef MY_EXTRACT_SCANPOSE
   tf_map_csv_file.open(work_directory + tf_map_csv_file_name);
-  tf_map_csv_file << "filename" << "," << "x" << "," << "y" << "," << "z" 
-                  << "," << "roll" << "," << "pitch" << "," << "yaw" << std::endl;
+  tf_map_csv_file << "filename,x,y,z,roll,pitch,yaw" << std::endl;
 #endif // MY_EXTRACT_SCANPOSE
 
   // Open bagfile
   std::cout << "Loading " << _bag_file << std::endl;
   rosbag::Bag bag(_bag_file, rosbag::bagmode::Read);
   std::vector<std::string> reading_topics;
-    reading_topics.push_back(std::string("/points_raw"));
+    reading_topics.push_back(std::string("velodyne_points"));
   ros::Time rosbag_start_time = ros::TIME_MAX;
   ros::Time rosbag_stop_time = ros::TIME_MIN;
   if(_play_duration <= 0)
@@ -609,7 +624,9 @@ int main(int argc, char** argv)
   int msg_pos = 0;
 
   // Looping, processing messages in bag file
-  std::cout << "Finished preparing bagfile. Starting mapping...\n" << std::endl;
+  std::chrono::time_point<std::chrono::system_clock> t1, t2, t3;
+  std::cout << "Finished preparing bagfile. Starting mapping..." << std::endl;
+  std::cout << "Note: if the mapping does not start immediately, check the subscribed topic names.\n" << std::endl;
   foreach(rosbag::MessageInstance const message, view)
   {
     sensor_msgs::PointCloud2::ConstPtr input_cloud = message.instantiate<sensor_msgs::PointCloud2>();
@@ -620,8 +637,11 @@ int main(int argc, char** argv)
     }
 
     // Global callback to call scans process and submap process
-    ndt_mapping_callback(input_cloud);
+    t1 = std::chrono::system_clock::now();
     map_maintenance_callback(current_pose);
+    t2 = std::chrono::system_clock::now();
+    ndt_mapping_callback(input_cloud);
+    t3 = std::chrono::system_clock::now();
     // #pragma omp parallel sections
     // {
     //   #pragma omp section
@@ -638,7 +658,9 @@ int main(int argc, char** argv)
     // }
     msg_pos++;
     std::cout << "Number of key scans: " << k << "\n";
-    std::cout << "Processed: " << msg_pos << "/" << msg_size << std::endl;
+    std::cout << "Processed: " << msg_pos << "/" << msg_size << "\n";
+    std::cout << "Get local map took: " << std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count() / 1.0 << "ns.\n";
+    std::cout << "NDT Mapping took: " << std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count() / 1000.0 << "ms."<< std::endl;
   }
   bag.close();
 

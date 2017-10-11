@@ -2,7 +2,7 @@
 <launch>
 
   <!-- send table.xml to param server -->
-  <arg name="bag" default="/home/zwu/LIDAR-DATA/8sep-around-pana.bag" />
+  <arg name="bag" default="/home/zwu/2011_09_30_drive_18.bag" />
   <arg name="start_time" default="0" /> <!-- all timings are in seconds -->
   <arg name="play_duration" default="-1" /> <!-- set negative to play all -->
   <arg name="namespace" default="" />
