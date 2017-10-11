@@ -44,13 +44,17 @@
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <vector>
 #include <boost/foreach.hpp>
+
+#define foreach BOOST_FOREACH
 
 #include <ros/ros.h>
 #include <rosbag/bag.h>
 #include <rosbag/view.h>
 #include <ros/time.h>
 #include <ros/duration.h>
+#include <ros/package.h>
 #include <signal.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Float32.h>
@@ -69,8 +73,8 @@
 #include <pcl/registration/ndt.h>
 #include <pcl/filters/voxel_grid.h>
 
-#include <autoware_msgs/ConfigNdtMapping.h>
-#include <autoware_msgs/ConfigNdtMappingOutput.h>
+// #include <autoware_msgs/ConfigNdtMapping.h>
+// #include <autoware_msgs/ConfigNdtMappingOutput.h>
 
 // Here are the functions I wrote. De-comment to use
 #define TILE_WIDTH 100
@@ -80,7 +84,7 @@ static int k = 0; // key frame count
 
 #ifdef MY_EXTRACT_SCANPOSE
 std::ofstream tf_map_csv_file;
-std::string tf_map_csv_file_name = "/home/zwu/catkin_ws/src/ndt_mapping/scan_extract/map_pose.csv";
+std::string tf_map_csv_file_name = "map_pose.csv";
 #endif // MY_EXTRACT_SCANPOSE
 
 struct pose
@@ -163,6 +167,8 @@ static Eigen::Matrix4f tf_btol, tf_ltob;
 static bool isMapUpdate = true;
 
 static double fitness_score;
+
+static std::string work_directory;
 
 // Function to set z, roll, pitch of ndt-mapping = 0 at all times
 #ifdef MY_DESLANT_TRANSFORM
@@ -268,6 +274,13 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
     isMapUpdate = false;
   }
 
+  guess_pose.x = previous_pose.x + diff_x;
+  guess_pose.y = previous_pose.y + diff_y;
+  guess_pose.z = previous_pose.z + diff_z;
+  guess_pose.roll = previous_pose.roll;
+  guess_pose.pitch = previous_pose.pitch;
+  guess_pose.yaw = previous_pose.yaw + diff_yaw;
+
   Eigen::AngleAxisf init_rotation_x(guess_pose.roll, Eigen::Vector3f::UnitX());
   Eigen::AngleAxisf init_rotation_y(guess_pose.pitch, Eigen::Vector3f::UnitY());
   Eigen::AngleAxisf init_rotation_z(guess_pose.yaw, Eigen::Vector3f::UnitZ());
@@ -342,8 +355,8 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
 #ifdef MY_EXTRACT_SCANPOSE
     static double pcd_count = 1;
     std::ostringstream scan_name;
-    scan_name << "/home/zwu/catkin_ws/src/my_packages/ndt_mapping/scan_extract/scan" << pcd_count << ".pcd";
-    std::string filename = scan_name.str();
+    scan_name << "scan" << pcd_count << ".pcd";
+    std::string filename = work_directory + scan_name.str();
     pcd_count++;
     pcl::io::savePCDFileBinary(filename, *scan_ptr);
 
@@ -406,7 +419,6 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   std::cout << "Transformation Matrix:\n";
   std::cout << t_localizer << "\n";
   std::cout << "shift: " << shift << "\n";
-  std::cout << "******Number of key scans: " << k << "\n";
   std::cout << "-----------------------------------------------------------------" << std::endl;
 }
 
@@ -444,7 +456,7 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
   std::time_t now = std::time(NULL);
   std::tm* pnow = std::localtime(&now);
   std::strftime(buffer, 80, "%Y%m%d_%H%M%S", pnow);
-  std::string filename = "/home/zwu/catkin_ws/src/my_packages/ndt_mapping/scan_extract/map_" + std::string(buffer) + ".pcd";
+  std::string filename = work_directory + "map_" + std::string(buffer) + ".pcd";
   std::cout << "-----------------------------------------------------------------\n";
   std::cout << "Writing the last map to pcd file before shutting down node..." << std::endl;
 
@@ -532,7 +544,7 @@ int main(int argc, char** argv)
   private_nh.getParam("tf_pitch", _tf_pitch);
   private_nh.getParam("tf_yaw", _tf_yaw);
 
-  std::cout << "NDT Mapping Parameters:" << std::endl;
+  std::cout << "\nNDT Mapping Parameters:" << std::endl;
   std::cout << "bag_file: " << _bag_file << std::endl;
   std::cout << "start_time: " << _start_time << std::endl;
   std::cout << "play_duration: " << _play_duration << std::endl;
@@ -544,7 +556,7 @@ int main(int argc, char** argv)
   std::cout << "min_scan_range: " << min_scan_range << std::endl;
   std::cout << "min_add_scan_shift: " << min_add_scan_shift << std::endl;
   std::cout << "(tf_x,tf_y,tf_z,tf_roll,tf_pitch,tf_yaw): (" << _tf_x << ", " << _tf_y << ", " << _tf_z << ", "
-            << _tf_roll << ", " << _tf_pitch << ", " << _tf_yaw << ")" << std::endl;
+            << _tf_roll << ", " << _tf_pitch << ", " << _tf_yaw << ")\n" << std::endl;
 
   Eigen::Translation3f tl_btol(_tf_x, _tf_y, _tf_z);                 // tl: translation
   Eigen::AngleAxisf rot_x_btol(_tf_roll, Eigen::Vector3f::UnitX());  // rot: rotation
@@ -562,15 +574,19 @@ int main(int argc, char** argv)
 
   ndt_map_pub = nh.advertise<sensor_msgs::PointCloud2>("/ndt_map", 1000, true);
 
+  work_directory = ros::package::getPath("ndt_mapping") + "/scan_extract/";
+
 #ifdef MY_EXTRACT_SCANPOSE
-  tf_map_csv_file.open(tf_map_csv_file_name);
+  tf_map_csv_file.open(work_directory + tf_map_csv_file_name);
   tf_map_csv_file << "filename" << "," << "x" << "," << "y" << "," << "z" 
                   << "," << "roll" << "," << "pitch" << "," << "yaw" << std::endl;
 #endif // MY_EXTRACT_SCANPOSE
 
   // Open bagfile
+  std::cout << "Loading " << _bag_file << std::endl;
   rosbag::Bag bag(_bag_file, rosbag::bagmode::Read);
-  std::vector<std::string> reading_topics = {"points_raw"};
+  std::vector<std::string> reading_topics;
+    reading_topics.push_back(std::string("/points_raw"));
   ros::Time rosbag_start_time = ros::TIME_MAX;
   ros::Time rosbag_stop_time = ros::TIME_MIN;
   if(_play_duration <= 0)
@@ -588,8 +604,13 @@ int main(int argc, char** argv)
     
   }
   rosbag::View view(bag, rosbag::TopicQuery(reading_topics), rosbag_start_time, rosbag_stop_time);
+  // rosbag::View view(bag, rosbag::TopicQuery(reading_topics));
+  int msg_size = view.size();
+  int msg_pos = 0;
+
   // Looping, processing messages in bag file
-  BOOST_FOREACH(rosbag::MessageInstance const message, view)
+  std::cout << "Finished preparing bagfile. Starting mapping...\n" << std::endl;
+  foreach(rosbag::MessageInstance const message, view)
   {
     sensor_msgs::PointCloud2::ConstPtr input_cloud = message.instantiate<sensor_msgs::PointCloud2>();
     if(input_cloud == NULL)
@@ -599,18 +620,25 @@ int main(int argc, char** argv)
     }
 
     // Global callback to call scans process and submap process
-    #pragma omp parallel sections
-    {
-      #pragma omp section
-      {
-        ndt_mapping_callback(input_cloud);
-      }
-      #pragma omp section
-      {
-        //using current_pose as local_pose to get local_map
-        map_maintenance_callback(current_pose);
-      }
-    }
+    ndt_mapping_callback(input_cloud);
+    map_maintenance_callback(current_pose);
+    // #pragma omp parallel sections
+    // {
+    //   #pragma omp section
+    //   {
+    //     ndt_mapping_callback(input_cloud);
+    //   }
+    //   #pragma omp section
+    //   {
+    //     std::cout << "current_pose: (" << current_pose.x << "," << current_pose.y << "," << current_pose.z << ","
+    //                                    << current_pose.roll << "," << current_pose.pitch << "," << current_pose.yaw << std::endl;
+    //     //using current_pose as local_pose to get local_map
+    //     map_maintenance_callback(current_pose);
+    //   }
+    // }
+    msg_pos++;
+    std::cout << "Number of key scans: " << k << "\n";
+    std::cout << "Processed: " << msg_pos << "/" << msg_size << std::endl;
   }
   bag.close();
 

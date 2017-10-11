@@ -2,7 +2,7 @@
 <launch>
 
   <!-- send table.xml to param server -->
-  <arg name="bag" />
+  <arg name="bag" default="/home/zwu/LIDAR-DATA/3oct-around-pana1.bag" />
   <arg name="start_time" default="0" /> <!-- all timings are in seconds -->
   <arg name="play_duration" default="-1" /> <!-- set negative to play all -->
   <arg name="namespace" default="" />
@@ -23,8 +23,7 @@
   <arg name="tf_yaw" default="0.0"/>
 
   <!-- rosrun ndt_localizer ndt_mapping  -->
-  <node pkg="ndt_mapping" type="queue_counter" name="queue_counter" output="screen" ns="$(arg namespace)" />
-  <node pkg="ndt_mapping" type="ndt_mapping" name="ndt_mapping" output="screen" ns="$(arg namespace)" >
+  <node pkg="ndt_mapping" type="ndt_mapping" name="ndt_mapping" output="screen">
   	<param name="bag_file" value="$(arg bag)" />
   	<param name="start_time" value="$(arg start_time)" />
   	<param name="play_duration" value="$(arg play_duration)" />

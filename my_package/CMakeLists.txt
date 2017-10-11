@@ -196,3 +196,7 @@ target_link_libraries(pose_optimization_mapping ${catkin_LIBRARIES} ${CERES_LIBR
 add_executable(transform_pcd src/transform_pcd.cpp)
 add_dependencies(transform_pcd ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg autoware_msgs_generate_messages_cpp)
 target_link_libraries(transform_pcd ${catkin_LIBRARIES})
+
+add_executable(pose_data_analysis src/pose_data_analysis.cpp)
+add_dependencies(pose_data_analysis ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg autoware_msgs_generate_messages_cpp)
+target_link_libraries(pose_data_analysis ${catkin_LIBRARIES})
