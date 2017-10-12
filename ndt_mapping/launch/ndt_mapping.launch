@@ -8,11 +8,11 @@
   <arg name="namespace" default="" />
   <arg name="resolution" default="2.8"/>
   <arg name="step_size" default="0.05"/>
-  <arg name="transformation_epsilon" default="0.0001"/>
+  <arg name="transformation_epsilon" default="0.001"/>
   <arg name="max_iteration" default="100"/>
   <arg name="voxel_leaf_size" default="0.1"/>
   <arg name="min_scan_range" default="2.0"/>
-  <arg name="min_add_scan_shift" default="1.0"/>  
+  <arg name="min_add_scan_shift" default="0.4"/>  
   
   <!-- tf from lidar frame to car frame -->
   <arg name="tf_x" default="1.2"/>

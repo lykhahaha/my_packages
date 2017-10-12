@@ -77,7 +77,7 @@
 // #include <autoware_msgs/ConfigNdtMappingOutput.h>
 
 // Here are the functions I wrote. De-comment to use
-#define TILE_WIDTH 100
+#define TILE_WIDTH 70
 // #define MY_DESLANT_TRANSFORM // set z, roll, pitch to 0
 #define MY_OUTPUT_DATA_CSV
 #define MY_EXTRACT_SCANPOSE // do not use this, this is to extract scans and poses to close loop
@@ -157,15 +157,19 @@ static float ndt_res = 2.8;      // Resolution
 static double step_size = 0.05;   // Step size
 static double trans_eps = 0.001;  // Transformation epsilon
 
+static float _start_time = 0; // 0 means start playing bag from beginnning
+static float _play_duration = -1; // negative means play everything
+static double min_scan_range = 2.0;
+static double min_add_scan_shift = 1.0;
+static std::string _bag_file;
+static std::string work_directory;
+
 // Leaf size of VoxelGrid filter.
 static double voxel_leaf_size = 0.1;
 
 static ros::Publisher ndt_map_pub;
 
 static int initial_scan_loaded = 0;
-
-static double min_scan_range = 2.0;
-static double min_add_scan_shift = 1.0;
 
 static double _tf_x, _tf_y, _tf_z, _tf_roll, _tf_pitch, _tf_yaw;
 static Eigen::Matrix4f tf_btol, tf_ltob;
@@ -174,7 +178,9 @@ static bool isMapUpdate = true;
 
 static double fitness_score;
 
-static std::string work_directory;
+// File name get from time
+std::time_t now = std::time(NULL);
+std::tm* pnow = std::localtime(&now);
 
 // Function to set z, roll, pitch of ndt-mapping = 0 at all times
 #ifdef MY_DESLANT_TRANSFORM
@@ -258,6 +264,16 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
     pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, tf_btol);
     add_new_scan(*transformed_scan_ptr);
     initial_scan_loaded = 1;
+#ifdef MY_EXTRACT_SCANPOSE  
+    pcl::io::savePCDFileBinary(work_directory + "scan0.pcd", *scan_ptr);
+
+    // outputing into csv
+    tf_map_csv_file << "scan0.pcd" << "," 
+                    << _tf_x << "," << _tf_y << "," << _tf_z << "," 
+                    << _tf_roll << "," << _tf_pitch << "," << _tf_yaw
+                    << std::endl;
+    return;
+#endif // MY_EXTRACT_SCANPOSE
   }
 
   // Apply voxelgrid filter
@@ -274,11 +290,14 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   ndt.setMaximumIterations(max_iter);
   ndt.setInputSource(filtered_scan_ptr);
 
+  std::chrono::time_point<std::chrono::system_clock> t1 = std::chrono::system_clock::now();
   if (isMapUpdate == true)
   {
     ndt.setInputTarget(local_map_ptr);
     isMapUpdate = false;
   }
+  std::chrono::time_point<std::chrono::system_clock> t2 = std::chrono::system_clock::now();
+  double ndt_update_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
 
   guess_pose.x = previous_pose.x + diff_x;
   guess_pose.y = previous_pose.y + diff_y;
@@ -298,7 +317,11 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
 
   pcl::PointCloud<pcl::PointXYZI>::Ptr output_cloud(new pcl::PointCloud<pcl::PointXYZI>);
 
+  t1 = std::chrono::system_clock::now();
   ndt.align(*output_cloud, init_guess);
+  t2 = std::chrono::system_clock::now();
+  double ndt_align_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
+
   fitness_score = ndt.getFitnessScore();
 
   t_localizer = ndt.getFinalTransformation();
@@ -367,9 +390,9 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
     static double pcd_count = 1;
     std::ostringstream scan_name;
     scan_name << "scan" << pcd_count << ".pcd";
-    std::string filename = work_directory + scan_name.str();
+    std::string filename = scan_name.str();
     pcd_count++;
-    pcl::io::savePCDFileBinary(filename, *scan_ptr);
+    pcl::io::savePCDFileBinary(work_directory + filename, *scan_ptr);
 
     // outputing into csv
     tf_map_csv_file << filename << "," << localizer_pose.x << "," << localizer_pose.y << "," << localizer_pose.z
@@ -430,6 +453,8 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   std::cout << "Transformation Matrix:\n";
   std::cout << t_localizer << "\n";
   std::cout << "shift: " << shift << "\n";
+  std::cout << "Update target map took: " << ndt_update_time << "ms.\n";
+  std::cout << "NDT matching took: " << ndt_align_time << "ms.\n";
   std::cout << "-----------------------------------------------------------------" << std::endl;
 }
 
@@ -441,7 +466,7 @@ static void map_maintenance_callback(pose local_pose)
   // local_key.x = int(floor(local_pose.x / TILE_WIDTH));
   // local_key.y = int(floor(local_pose.y / TILE_WIDTH));
 
-  // Only need to update local_map through world_map only if local_key changes
+  // Only update local_map through world_map only if local_key changes
   if(local_key != previous_key)
   {
     std::lock_guard<std::mutex> lck(mtx);
@@ -455,18 +480,16 @@ static void map_maintenance_callback(pose local_pose)
         tmp_key.y = y;
         local_map += world_map[tmp_key];
       }
-  }
 
-  // Update key
-  previous_key = local_key;
+    // Update key
+    previous_key = local_key;
+  }
 }
 
 void mySigintHandler(int sig) // Publish the map/final_submap if node is terminated
 {
-  char buffer[80];
-  std::time_t now = std::time(NULL);
-  std::tm* pnow = std::localtime(&now);
-  std::strftime(buffer, 80, "%Y%m%d_%H%M%S", pnow);
+  char buffer[100];
+  std::strftime(buffer, 100, "%Y%b%d_%H%M", pnow);
   std::string filename = work_directory + "map_" + std::string(buffer) + ".pcd";
   std::cout << "-----------------------------------------------------------------\n";
   std::cout << "Writing the last map to pcd file before shutting down node..." << std::endl;
@@ -480,6 +503,29 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
   std::cout << "Saved " << last_map.points.size() << " data points to " << filename << ".\n";
   std::cout << "-----------------------------------------------------------------" << std::endl;
   std::cout << "Done. Node will now shutdown." << std::endl;
+
+  // Write a config file
+  char cbuffer[100];
+  std::ofstream config_stream;
+  std::strftime(cbuffer, 100, "%b%d-%H%M", pnow);
+  std::string config_file = "config@" + std::string(buffer) + ".txt";
+  config_stream.open(config_file);
+  std::strftime(cbuffer, 100, "%c", pnow);
+  config_stream << "Created @ " << std::string(buffer) << std::endl;
+  config_stream << "Map: " << _bag_file << std::endl;
+  config_stream << "Corrected end scan pose: ?\n" << std::endl;
+
+  config_stream << "###\nResolution: " << ndt_res << std::endl;
+  config_stream << "Step Size: " << step_size << std::endl;
+  config_stream << "Transformation Epsilon: " << trans_eps << std::endl;
+  config_stream << "Leaf Size: " << voxel_leaf_size << std::endl;
+  config_stream << "Minimum Scan Range: " << min_scan_range << std::endl;
+  config_stream << "Minimum Add Scan Shift: " << min_add_scan_shift << std::endl;
+#ifdef TILE_WIDTH
+  config_stream << "Method of splitting map into tiles used. Size of each tile: " 
+                << TILE_WIDTH << "x" << TILE_WIDTH << std::endl;
+#endif // TILE_WIDTH
+  config_stream << "Time taken: <tobefilledin>" << std::endl;
 
   // All the default sigint handler does is call shutdown()
   ros::shutdown();
@@ -535,9 +581,6 @@ int main(int argc, char** argv)
   ros::NodeHandle private_nh("~");
 
   // setting parameters
-  std::string _bag_file;
-  float _start_time, _play_duration;
-
   private_nh.getParam("bag_file", _bag_file);
   private_nh.getParam("start_time", _start_time);
   private_nh.getParam("play_duration", _play_duration);
