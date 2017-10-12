@@ -706,6 +706,7 @@ int main(int argc, char** argv)
     std::cout << "NDT Mapping took: " << std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count() / 1000.0 << "ms."<< std::endl;
   }
   bag.close();
+  std::cout << "Finished processing bag file. Ctrl+C to terminate node." << std::endl;
 
   ros::spin();
 
