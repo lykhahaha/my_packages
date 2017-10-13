@@ -70,8 +70,13 @@
 #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 
+#ifdef USE_FAST_PCL
+#include <fast_pcl/registration/ndt.h>
+#include <fast_pcl/filters/voxel_grid.h>
+#else
 #include <pcl/registration/ndt.h>
 #include <pcl/filters/voxel_grid.h>
+#endif
 
 // #include <autoware_msgs/ConfigNdtMapping.h>
 // #include <autoware_msgs/ConfigNdtMappingOutput.h>
@@ -301,7 +306,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
 
   guess_pose.x = previous_pose.x + diff_x;
   guess_pose.y = previous_pose.y + diff_y;
-  guess_pose.z = previous_pose.z + diff_z;
+  guess_pose.z = previous_pose.z; // + diff_z;
   guess_pose.roll = previous_pose.roll;
   guess_pose.pitch = previous_pose.pitch;
   guess_pose.yaw = previous_pose.yaw + diff_yaw;
@@ -318,7 +323,13 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   pcl::PointCloud<pcl::PointXYZI>::Ptr output_cloud(new pcl::PointCloud<pcl::PointXYZI>);
 
   t1 = std::chrono::system_clock::now();
+#ifdef USE_FAST_PCL
+  ndt.omp_align(*output_cloud, init_guess);
+  fitness_score = ndt.omp_getFitnessScore();
+#else
   ndt.align(*output_cloud, init_guess);
+  fitness_score = ndt.getFitnessScore();
+#endif
   t2 = std::chrono::system_clock::now();
   double ndt_align_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
 
@@ -626,13 +637,13 @@ int main(int argc, char** argv)
 
   local_map.header.frame_id = "map";
 
-  ndt_map_pub = nh.advertise<sensor_msgs::PointCloud2>("/ndt_map", 1000, true);
+  ndt_map_pub = nh.advertise<sensor_msgs::PointCloud2>("/local_map", 1000, true);
 
   work_directory = ros::package::getPath("ndt_mapping") + "/results/new/";
 
 #ifdef MY_OUTPUT_DATA_CSV
   output_csv_file.open(work_directory + csv_file_name);
-  output_csv_file << "rostime,x,y,z,roll,pitch,yaw" << std::endl;//write file headers
+  output_csv_file << "rostime,x,y,z,roll,pitch,yaw" << std::endl; //write file headers
 #endif // MY_OUTPUT_DATA_CSV
 
 #ifdef MY_EXTRACT_SCANPOSE
@@ -644,7 +655,7 @@ int main(int argc, char** argv)
   std::cout << "Loading " << _bag_file << std::endl;
   rosbag::Bag bag(_bag_file, rosbag::bagmode::Read);
   std::vector<std::string> reading_topics;
-    reading_topics.push_back(std::string("velodyne_points"));
+    reading_topics.push_back(std::string("/points_raw"));
   ros::Time rosbag_start_time = ros::TIME_MAX;
   ros::Time rosbag_stop_time = ros::TIME_MIN;
   if(_play_duration <= 0)
