@@ -200,3 +200,7 @@ target_link_libraries(transform_pcd ${catkin_LIBRARIES})
 add_executable(pose_data_analysis src/pose_data_analysis.cpp)
 add_dependencies(pose_data_analysis ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg autoware_msgs_generate_messages_cpp)
 target_link_libraries(pose_data_analysis ${catkin_LIBRARIES})
+
+add_executable(import_to_bag src/import_to_bag.cpp)
+add_dependencies(import_to_bag ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg autoware_msgs_generate_messages_cpp)
+target_link_libraries(import_to_bag ${catkin_LIBRARIES})
