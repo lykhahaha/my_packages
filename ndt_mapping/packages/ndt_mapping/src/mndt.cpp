@@ -17,7 +17,7 @@
 // #include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 
-#define TILE_WIDTH 100
+#define TILE_WIDTH 200
 
 struct Key
 {
@@ -55,15 +55,21 @@ int main(int argc, char** argv)
 		return -1;
 	}
 
-	std::string inputFile = argv[1];
-	pcl::PointCloud<pcl::PointXYZI> src; // input map
+	pcl::PointCloud<pcl::PointXYZI> src; // all input map
+	for(int i = 1; i < argc; i++)
+	{	
+		pcl::PointCloud<pcl::PointXYZI> tmp;
+		std::string inputFile = argv[i];
 
-  std::cout << "Loading " << inputFile << std::endl;
-	if(pcl::io::loadPCDFile<pcl::PointXYZI>(inputFile, src) == -1)
-  {
-    std::cerr << "Couldn't read " << inputFile << "." << std::endl;
-    return -1;
-  }
+	  std::cout << "Loading " << inputFile << std::endl;
+		if(pcl::io::loadPCDFile<pcl::PointXYZI>(inputFile, tmp) == -1)
+	  {
+	    std::cerr << "Couldn't read " << inputFile << "." << std::endl;
+	    return -1;
+	  }
+	  else
+	  	src += tmp;
+	}
   std::cout << src.size() << " data points loaded." << std::endl;
 
   std::unordered_map<Key, pcl::PointCloud<pcl::PointXYZI>> worldMap;
@@ -84,33 +90,33 @@ int main(int argc, char** argv)
 	time_end = std::chrono::system_clock::now();
 	double time_diff = std::chrono::duration_cast<std::chrono::microseconds>(time_end - time_start).count() / 1000.0;
 
-	// for (auto& x: worldMap) 
-	// {
- //    std::cout << "(" << x.first.x << "," << x.first.y << "): " << x.second.size() << std::endl;
- //    std::string out_filename = "map_folder/map_" + std::to_string(x.first.x) + "_" + std::to_string(x.first.y);
-	//   pcl::io::savePCDFileBinary(out_filename + ".pcd", x.second);
-	//   std::cout << "Finished. Saved pointcloud to " << out_filename << ".pcd" << std::endl;
- //  }
+	for (auto& x: worldMap) 
+	{
+    std::cout << "(" << x.first.x << "," << x.first.y << "): " << x.second.size() << std::endl;
+    std::string out_filename = "/home/zwu/map_folder/" + std::to_string(x.first.x) + ";" + std::to_string(x.first.y);
+	  pcl::io::savePCDFileBinary(out_filename + ".pcd", x.second);
+	  std::cout << "Finished. Saved pointcloud to " << out_filename << ".pcd" << std::endl;
+  }
 
-  std::cout << "Total processing time: " << time_diff << std::endl;
+//   std::cout << "Total processing time: " << time_diff << std::endl;
 
-  time_start = std::chrono::system_clock::now();
-  Key local_key;
-  local_key.x = int(floor(1 / TILE_WIDTH));
-  local_key.y = int(floor(0 / TILE_WIDTH));
-  pcl::PointCloud<pcl::PointXYZI> localMap;
-  Key tmp_key;
-// #pragma omp parallel for shared(localMap, worldMap) num_threads(2) 
-  for(int x = local_key.x - 1; x <= local_key.x; x++)
-    for(int y = local_key.y - 1; y <= local_key.y; y++)
-    {
-    	tmp_key.x = x;
-    	tmp_key.y = y;
-      localMap += worldMap[tmp_key];
-    }
-  time_end = std::chrono::system_clock::now();
-	time_diff = std::chrono::duration_cast<std::chrono::microseconds>(time_end - time_start).count() / 1000.0;
-	std::cout << "Total getting local_map time: " << time_diff << std::endl;
+//   time_start = std::chrono::system_clock::now();
+//   Key local_key;
+//   local_key.x = int(floor(1 / TILE_WIDTH));
+//   local_key.y = int(floor(0 / TILE_WIDTH));
+//   pcl::PointCloud<pcl::PointXYZI> localMap;
+//   Key tmp_key;
+// // #pragma omp parallel for shared(localMap, worldMap) num_threads(2) 
+//   for(int x = local_key.x - 1; x <= local_key.x; x++)
+//     for(int y = local_key.y - 1; y <= local_key.y; y++)
+//     {
+//     	tmp_key.x = x;
+//     	tmp_key.y = y;
+//       localMap += worldMap[tmp_key];
+//     }
+//   time_end = std::chrono::system_clock::now();
+// 	time_diff = std::chrono::duration_cast<std::chrono::microseconds>(time_end - time_start).count() / 1000.0;
+// 	std::cout << "Total getting local_map time: " << time_diff << std::endl;
 	// for(int i = 0; ; i++)
 	// {
 	// 	localMap.clear();

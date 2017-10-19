@@ -16,44 +16,51 @@ int main(int argc, char **argv)
   ros::init(argc, argv, "pcd_to_nvtxt");
   ros::NodeHandle n;
 
-  if(argc < 2)
+  std::cout << "INFO: Reading data in the current directory." << std::endl;
+  std::cout << "Please ensure that txts/ directory IS CREATED in this directory." << std::endl;
+  std::cout << "Also ensure that ONLY .pcd files (either binary or ascii) are in this directory." << std::endl;
+
+  std::string p(argc <= 1 ? "." : argv[1]);
+  if(boost::filesystem::is_directory(p))
   {
-  	std::cout << "Usage: rosrun my_package \"input.pcd\" [output.txt] " << std::endl;
-  	return(-1);
+    for(boost::filesystem::directory_iterator itr(p); itr != boost::filesystem::directory_iterator(); ++itr) // Loop through files
+    {
+      std::string filename = itr->path().filename().string();
+      std::cout << "Processing: " << filename;
+
+      if(boost::filesystem::is_regular_file(itr->status())) // if it is a file
+        std::cout << " [" << boost::filesystem::file_size(itr->path()) << " bytes]" << std::endl;
+      else
+      {
+        std::cout << "[directory], skipped." << std::endl;
+        continue;
+      }
+
+    	// pcl::PointCloud<pcl::PointXYZI> input;
+    	pcl::PointCloud<pcl::PointXYZI> input;
+      if(pcl::io::loadPCDFile<pcl::PointXYZI> (filename, input) == -1)
+      {
+        std::cout << "Couldn't read " << filename << "." << std::endl;
+        return(-1);
+      }
+      std::cout << "Loaded " << input.size() << " data points from " << filename << std::endl;
+
+      std::string outfile = filename;
+    	outfile = filename;
+    	outfile.resize(outfile.size()-4); // erase the .pcd extension
+    	outfile += ".txt";
+
+    	std::ofstream txt_stream;
+    	txt_stream.open("txts/" + outfile);
+    	txt_stream << input.size() << std::endl;
+
+    	// Iterate through every point and output its [x, y, z, intensity]
+    	for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = input.begin(); item < input.end(); item++)
+      	txt_stream << (double)item->x << " " << (double)item->y << " " << (double)item->z << " " << (double)item->intensity << std::endl;
+
+      // Save point cloud to pcd
+      std::cout << input.size() << " points data have been saved to txts/" << outfile << std::endl;
+    }
   }
-  std::string filename = argv[1];
-  std::cout << "Loading file: " << filename << std::endl;
-
-	// pcl::PointCloud<pcl::PointXYZI> input;
-	pcl::PointCloud<pcl::PointXYZI> input;
-  if(pcl::io::loadPCDFile<pcl::PointXYZI> (filename, input) == -1)
-  {
-    std::cout << "Couldn't read " << filename << "." << std::endl;
-    return(-1);
-  }
-  std::cout << "Loaded " << input.size() << " data points from " << filename << std::endl;
-
-  std::string outfile;
-  if(argc < 3)
-  {
-  	std::cout << "Output text file not indicated. Using input file name." << std::endl;
-  	outfile = argv[1];
-  	outfile.resize(outfile.size()-4); // erase the .pcd extension
-  	outfile += ".txt";
-  }
-  else 
-  	outfile = argv[2];
-
-	std::ofstream txt_stream;
-	txt_stream.open(outfile);
-	txt_stream << input.size() << std::endl;
-
-	// Iterate through every point and output its [x, y, z, intensity]
-	for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = input.begin(); item < input.end(); item += 6)
-  	txt_stream << (double)item->x << " " << (double)item->y << " " << (double)item->z << " " << (double)item->intensity << std::endl;
-
-  // Save point cloud to pcd
-  std::cout << input.size() << " points data have been saved to " << outfile << std::endl;
-
   return 0;
 }

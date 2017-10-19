@@ -2,17 +2,17 @@
 <launch>
 
   <!-- send table.xml to param server -->
-  <arg name="bag" default="/home/zwu/LIDAR-DATA/8sep-around-pana.bag" />
-  <arg name="start_time" default="0" /> <!-- all timings are in seconds -->
-  <arg name="play_duration" default="100" /> <!-- set negative to play all -->
-  <arg name="namespace" default="" />
-  <arg name="resolution" default="1"/>
-  <arg name="step_size" default="0.1"/>
-  <arg name="transformation_epsilon" default="0.05"/>
+  <arg name="bag" default="/home/zwu/LIDAR-DATA/3oct-around-pana1.bag" />
+  <arg name="start_time" default="10" /> <!-- all timings are in seconds -->
+  <arg name="play_duration" default="-1" /> <!-- set negative to play all -->
+  <arg name="namespace" default="" /> <!-- unused for now -->
+  <arg name="resolution" default="0.5"/>
+  <arg name="step_size" default="0.01"/>
+  <arg name="transformation_epsilon" default="0.001"/>
   <arg name="max_iteration" default="100"/>
-  <arg name="voxel_leaf_size" default="1.0"/>
-  <arg name="min_scan_range" default="1.5"/>
-  <arg name="min_add_scan_shift" default="0.4"/>  
+  <arg name="voxel_leaf_size" default="0.1"/>
+  <arg name="min_scan_range" default="5"/>
+  <arg name="min_add_scan_shift" default="0.5"/>  
   
   <!-- tf from lidar frame to car frame -->
   <arg name="tf_x" default="1.2"/>
@@ -23,7 +23,7 @@
   <arg name="tf_yaw" default="0.0"/>
 
   <!-- rosrun ndt_localizer ndt_mapping  -->
-  <node pkg="ndt_mapping" type="ndt_mapping" name="ndt_mapping" output="screen">
+  <node pkg="ndt_mapping" type="ndt_mapping" name="offline_ndt_mapping" output="screen">
   	<param name="bag_file" value="$(arg bag)" />
   	<param name="start_time" value="$(arg start_time)" />
   	<param name="play_duration" value="$(arg play_duration)" />

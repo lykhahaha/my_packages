@@ -114,6 +114,7 @@ namespace pcl
         , transformation_ (Matrix4::Identity ())
         , previous_transformation_ (Matrix4::Identity ())
         , transformation_epsilon_ (0.0)
+        , transformation_rotation_epsilon_(0.0)
         , euclidean_fitness_epsilon_ (-std::numeric_limits<double>::max ())
         , corr_dist_threshold_ (std::sqrt (std::numeric_limits<double>::max ()))
         , inlier_threshold_ (0.05)
@@ -345,6 +346,21 @@ namespace pcl
       inline double 
       getTransformationEpsilon () { return (transformation_epsilon_); }
 
+       /** \brief Set the transformation rotation epsilon (maximum allowable rotation difference between two consecutive
+        * transformations) in order for an optimization to be considered as having converged to the final
+        * solution.
+        * \param[in] epsilon the transformation rotation epsilon in order for an optimization to be considered as having
+        * converged to the final solution (epsilon is the cos(angle) in a axis-angle representation).
+        */
+      inline void
+      setTransformationRotationEpsilon (double epsilon) { transformation_rotation_epsilon_ = epsilon; }
+
+      /** \brief Get the transformation rotation epsilon (maximum allowable difference between two consecutive
+        * transformations) as set by the user (epsilon is the cos(angle) in a axis-angle representation).
+        */
+      inline double
+      getTransformationRotationEpsilon () { return (transformation_rotation_epsilon_); }
+
       /** \brief Set the maximum allowed Euclidean error between two consecutive steps in the ICP loop, before 
         * the algorithm is considered to have converged. 
         * The error is estimated as the sum of the differences between correspondences in an Euclidean sense, 
@@ -352,7 +368,6 @@ namespace pcl
         * \param[in] epsilon the maximum allowed distance error before the algorithm will be considered to have
         * converged
         */
-
       inline void 
       setEuclideanFitnessEpsilon (double epsilon) { euclidean_fitness_epsilon_ = epsilon; }
 
@@ -395,7 +410,7 @@ namespace pcl
       getFitnessScore (double max_range = std::numeric_limits<double>::max ());
 
       inline double
-	  omp_getFitnessScore (double max_range = std::numeric_limits<double>::max ());
+	    omp_getFitnessScore (double max_range = std::numeric_limits<double>::max ());
 
       /** \brief Obtain the Euclidean fitness score (e.g., sum of squared distances from the source to the target)
         * from two sets of correspondence distances (distances between source and target points)
@@ -524,6 +539,11 @@ namespace pcl
         * (user defined). 
         */
       double transformation_epsilon_;
+
+      /** \brief The maximum rotation difference between two consecutive transformations in order to consider convergence
+        * (user defined).
+        */
+      double transformation_rotation_epsilon_;
 
       /** \brief The maximum allowed Euclidean error between two consecutive steps in the ICP loop, before the 
         * algorithm is considered to have converged. The error is estimated as the sum of the differences between 

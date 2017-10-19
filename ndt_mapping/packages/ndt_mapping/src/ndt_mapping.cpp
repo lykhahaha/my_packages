@@ -36,6 +36,8 @@
 
 // #define OUTPUT  // If you want to output "position_log.txt", "#define OUTPUT".
 
+
+// Basic libs
 #include <chrono>
 #include <fstream>
 #include <iostream>
@@ -45,16 +47,22 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
-#include <boost/foreach.hpp>
 
+// Libraries for system commands
+#include <cstdlib>
+#include <unistd.h>
+#include <sys/types.h>
+#include <pwd.h>
+
+#include <boost/foreach.hpp> // to read bag file
 #define foreach BOOST_FOREACH
 
+// ROS libs
 #include <ros/ros.h>
 #include <rosbag/bag.h>
 #include <rosbag/view.h>
 #include <ros/time.h>
 #include <ros/duration.h>
-#include <ros/package.h>
 #include <signal.h>
 #include <std_msgs/Bool.h>
 #include <std_msgs/Float32.h>
@@ -65,6 +73,7 @@
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_datatypes.h>
 
+// PCL libs
 #include <pcl/io/io.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
@@ -77,9 +86,6 @@
 #include <pcl/registration/ndt.h>
 #include <pcl/filters/voxel_grid.h>
 #endif
-
-// #include <autoware_msgs/ConfigNdtMapping.h>
-// #include <autoware_msgs/ConfigNdtMappingOutput.h>
 
 // Here are the functions I wrote. De-comment to use
 #define TILE_WIDTH 70
@@ -458,11 +464,14 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   std::cout << "NDT has converged: " << ndt.hasConverged() << "\n";
   std::cout << "Fitness score: " << fitness_score << "\n";
   std::cout << "Number of iteration: " << ndt.getFinalNumIteration() << "\n";
+  std::cout << "Guessed posed: " << "\n";
+  std::cout << "(" << guess_pose.x << ", " << guess_pose.y << ", " << guess_pose.z << ", " << guess_pose.roll
+            << ", " << guess_pose.pitch << ", " << guess_pose.yaw << ")\n";
   std::cout << "(x,y,z,roll,pitch,yaw):" << "\n";
   std::cout << "(" << current_pose.x << ", " << current_pose.y << ", " << current_pose.z << ", " << current_pose.roll
             << ", " << current_pose.pitch << ", " << current_pose.yaw << ")\n";
-  std::cout << "Transformation Matrix:\n";
-  std::cout << t_localizer << "\n";
+  // std::cout << "Transformation Matrix:\n";
+  // std::cout << t_localizer << "\n";
   std::cout << "shift: " << shift << "\n";
   std::cout << "Update target map took: " << ndt_update_time << "ms.\n";
   std::cout << "NDT matching took: " << ndt_align_time << "ms.\n";
@@ -519,10 +528,10 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
   char cbuffer[100];
   std::ofstream config_stream;
   std::strftime(cbuffer, 100, "%b%d-%H%M", pnow);
-  std::string config_file = "config@" + std::string(buffer) + ".txt";
-  config_stream.open(config_file);
+  std::string config_file = "config@" + std::string(cbuffer) + ".txt";
+  config_stream.open(work_directory + config_file);
   std::strftime(cbuffer, 100, "%c", pnow);
-  config_stream << "Created @ " << std::string(buffer) << std::endl;
+  config_stream << "Created @ " << std::string(cbuffer) << std::endl;
   config_stream << "Map: " << _bag_file << std::endl;
   config_stream << "Corrected end scan pose: ?\n" << std::endl;
 
@@ -639,7 +648,12 @@ int main(int argc, char** argv)
 
   ndt_map_pub = nh.advertise<sensor_msgs::PointCloud2>("/local_map", 1000, true);
 
-  work_directory = ros::package::getPath("ndt_mapping") + "/results/new/";
+  const char *home_directory;
+  if((home_directory = getenv("HOME")) == NULL)
+    home_directory = getpwuid(getuid())->pw_dir; // get home directory
+
+  work_directory = std::string(home_directory) + "/results_new/";
+  // work_directory = ros::package::getPath("ndt_mapping") + "/results/new/";
 
 #ifdef MY_OUTPUT_DATA_CSV
   output_csv_file.open(work_directory + csv_file_name);
@@ -661,13 +675,13 @@ int main(int argc, char** argv)
   if(_play_duration <= 0)
   {
     rosbag::View tmp_view(bag);
-    rosbag_start_time = tmp_view.getBeginTime();
+    rosbag_start_time = tmp_view.getBeginTime() + ros::Duration(_start_time);
     rosbag_stop_time = ros::TIME_MAX;
   }
   else
   {
     rosbag::View tmp_view(bag);
-    rosbag_start_time = tmp_view.getBeginTime();
+    rosbag_start_time = tmp_view.getBeginTime() + ros::Duration(_start_time);
     ros::Duration sim_duration(_play_duration);
     rosbag_stop_time = rosbag_start_time + sim_duration;
     

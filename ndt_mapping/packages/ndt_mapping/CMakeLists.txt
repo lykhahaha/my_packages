@@ -47,7 +47,8 @@ include_directories(include ${catkin_INCLUDE_DIRS})
 IF(PCL_VERSION VERSION_LESS "1.7.2")
 SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -fopenmp -Wall ${CMAKE_CXX_FLAGS}")
 ELSE(PCL_VERSION VERSION_LESS "1.7.2")
-SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -fopenmp -Wall -DUSE_FAST_PCL ${CMAKE_CXX_FLAGS}")
+#SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -fopenmp -Wall -DUSE_FAST_PCL ${CMAKE_CXX_FLAGS}")
+SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -fopenmp -Wall ${CMAKE_CXX_FLAGS}")
 ENDIF(PCL_VERSION VERSION_LESS "1.7.2")
 
 
