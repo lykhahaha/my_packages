@@ -279,7 +279,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
     pcl::io::savePCDFileBinary(work_directory + "scan0.pcd", *scan_ptr);
 
     // outputing into csv
-    tf_map_csv_file << "scan0.pcd" << "," 
+    tf_map_csv_file << "scan0.pcd" << "," << input->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
                     << _tf_x << "," << _tf_y << "," << _tf_z << "," 
                     << _tf_roll << "," << _tf_pitch << "," << _tf_yaw
                     << std::endl;
@@ -312,7 +312,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
 
   guess_pose.x = previous_pose.x + diff_x;
   guess_pose.y = previous_pose.y + diff_y;
-  guess_pose.z = previous_pose.z; // + diff_z;
+  guess_pose.z = previous_pose.z + diff_z;
   guess_pose.roll = previous_pose.roll;
   guess_pose.pitch = previous_pose.pitch;
   guess_pose.yaw = previous_pose.yaw + diff_yaw;
@@ -412,9 +412,10 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
     pcl::io::savePCDFileBinary(work_directory + filename, *scan_ptr);
 
     // outputing into csv
-    tf_map_csv_file << filename << "," << localizer_pose.x << "," << localizer_pose.y << "," << localizer_pose.z
-                                << "," << localizer_pose.roll << "," << localizer_pose.pitch << "," << localizer_pose.yaw
-                                << std::endl;
+    tf_map_csv_file << filename << "," << input->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
+                    << localizer_pose.x << "," << localizer_pose.y << "," << localizer_pose.z << ","
+                    << localizer_pose.roll << "," << localizer_pose.pitch << "," << localizer_pose.yaw
+                    << std::endl;
 #endif // MY_EXTRACT_SCANPOSE
 	  pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, t_localizer);
     add_new_scan(*transformed_scan_ptr);
@@ -542,7 +543,7 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
   config_stream << "Minimum Scan Range: " << min_scan_range << std::endl;
   config_stream << "Minimum Add Scan Shift: " << min_add_scan_shift << std::endl;
 #ifdef TILE_WIDTH
-  config_stream << "Method of splitting map into tiles used. Size of each tile: " 
+  config_stream << "Tile-map type used. Size of each tile: " 
                 << TILE_WIDTH << "x" << TILE_WIDTH << std::endl;
 #endif // TILE_WIDTH
   config_stream << "Time taken: <tobefilledin>" << std::endl;
@@ -652,7 +653,7 @@ int main(int argc, char** argv)
   if((home_directory = getenv("HOME")) == NULL)
     home_directory = getpwuid(getuid())->pw_dir; // get home directory
 
-  work_directory = std::string(home_directory) + "/results_new/";
+  work_directory = std::string(home_directory) + "/ndt_custom/";
   // work_directory = ros::package::getPath("ndt_mapping") + "/results/new/";
 
 #ifdef MY_OUTPUT_DATA_CSV
@@ -662,7 +663,7 @@ int main(int argc, char** argv)
 
 #ifdef MY_EXTRACT_SCANPOSE
   tf_map_csv_file.open(work_directory + tf_map_csv_file_name);
-  tf_map_csv_file << "filename,x,y,z,roll,pitch,yaw" << std::endl;
+  tf_map_csv_file << "filename,sequence,sec,nsec,x,y,z,roll,pitch,yaw" << std::endl;
 #endif // MY_EXTRACT_SCANPOSE
 
   // Open bagfile
@@ -725,10 +726,10 @@ int main(int argc, char** argv)
     //   }
     // }
     msg_pos++;
-    std::cout << "Number of key scans: " << k << "\n";
-    std::cout << "Processed: " << msg_pos << "/" << msg_size << "\n";
-    std::cout << "Get local map took: " << std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count() / 1.0 << "ns.\n";
-    std::cout << "NDT Mapping took: " << std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count() / 1000.0 << "ms."<< std::endl;
+    std::cout << "---Number of key scans: " << k << "\n";
+    std::cout << "---Processed: " << msg_pos << "/" << msg_size << "\n";
+    std::cout << "---Get local map took: " << std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count() / 1.0 << "ns.\n";
+    std::cout << "---NDT Mapping took: " << std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count() / 1000.0 << "ms."<< std::endl;
   }
   bag.close();
   std::cout << "Finished processing bag file. Ctrl+C to terminate node." << std::endl;

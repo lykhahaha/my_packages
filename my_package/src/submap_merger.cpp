@@ -24,6 +24,8 @@ int main(int argc, char** argv)
 	std::string line, pcd_filename, x_str, y_str, z_str, roll_str, pitch_str, yaw_str;
   pcl::PointCloud<pcl::PointXYZI> map;
 
+  getline(csv_stream, line); // to skip header line
+  
   while(getline(csv_stream, line))
   {
     std::stringstream line_stream(line);
