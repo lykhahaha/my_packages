@@ -172,6 +172,7 @@ static float _start_time = 0; // 0 means start playing bag from beginnning
 static float _play_duration = -1; // negative means play everything
 static double min_scan_range = 2.0;
 static double min_add_scan_shift = 1.0;
+static double min_add_scan_yaw_diff = 0.005;
 static std::string _bag_file;
 static std::string work_directory;
 
@@ -339,7 +340,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   t2 = std::chrono::system_clock::now();
   double ndt_align_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
 
-  fitness_score = ndt.getFitnessScore();
+  // fitness_score = ndt.getFitnessScore();
 
   t_localizer = ndt.getFinalTransformation();
 
@@ -401,7 +402,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   
   // Calculate the shift between added_pos and current_pos
   double shift = sqrt(pow(current_pose.x - added_pose.x, 2.0) + pow(current_pose.y - added_pose.y, 2.0));
-  if (shift >= min_add_scan_shift)
+  if(shift >= min_add_scan_shift || diff_yaw >= min_add_scan_yaw_diff)
   {
 #ifdef MY_EXTRACT_SCANPOSE
     static double pcd_count = 1;
@@ -473,7 +474,8 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
             << ", " << current_pose.pitch << ", " << current_pose.yaw << ")\n";
   // std::cout << "Transformation Matrix:\n";
   // std::cout << t_localizer << "\n";
-  std::cout << "shift: " << shift << "\n";
+  std::cout << "Shift: " << shift << "\n";
+  std::cout << "Yaw Diff: " << diff_yaw << "\n";
   std::cout << "Update target map took: " << ndt_update_time << "ms.\n";
   std::cout << "NDT matching took: " << ndt_align_time << "ms.\n";
   std::cout << "-----------------------------------------------------------------" << std::endl;
@@ -542,6 +544,7 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
   config_stream << "Leaf Size: " << voxel_leaf_size << std::endl;
   config_stream << "Minimum Scan Range: " << min_scan_range << std::endl;
   config_stream << "Minimum Add Scan Shift: " << min_add_scan_shift << std::endl;
+  config_stream << "Minimum Add Scan Yaw Change: " << min_add_scan_yaw_diff << std::endl;
 #ifdef TILE_WIDTH
   config_stream << "Tile-map type used. Size of each tile: " 
                 << TILE_WIDTH << "x" << TILE_WIDTH << std::endl;
@@ -612,6 +615,7 @@ int main(int argc, char** argv)
   private_nh.getParam("voxel_leaf_size", voxel_leaf_size);
   private_nh.getParam("min_scan_range", min_scan_range);
   private_nh.getParam("min_add_scan_shift", min_add_scan_shift);
+  private_nh.getParam("min_add_scan_yaw_diff", min_add_scan_yaw_diff);
   private_nh.getParam("tf_x", _tf_x);
   private_nh.getParam("tf_y", _tf_y);
   private_nh.getParam("tf_z", _tf_z);
@@ -630,6 +634,7 @@ int main(int argc, char** argv)
   std::cout << "voxel_leaf_size: " << voxel_leaf_size << std::endl;
   std::cout << "min_scan_range: " << min_scan_range << std::endl;
   std::cout << "min_add_scan_shift: " << min_add_scan_shift << std::endl;
+  std::cout << "min_add_scan_yaw_diff: " << min_add_scan_yaw_diff << std::endl;
   std::cout << "(tf_x,tf_y,tf_z,tf_roll,tf_pitch,tf_yaw): (" << _tf_x << ", " << _tf_y << ", " << _tf_z << ", "
             << _tf_roll << ", " << _tf_pitch << ", " << _tf_yaw << ")\n" << std::endl;
 
@@ -688,7 +693,6 @@ int main(int argc, char** argv)
     
   }
   rosbag::View view(bag, rosbag::TopicQuery(reading_topics), rosbag_start_time, rosbag_stop_time);
-  // rosbag::View view(bag, rosbag::TopicQuery(reading_topics));
   int msg_size = view.size();
   int msg_pos = 0;
 
@@ -732,9 +736,9 @@ int main(int argc, char** argv)
     std::cout << "---NDT Mapping took: " << std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count() / 1000.0 << "ms."<< std::endl;
   }
   bag.close();
-  std::cout << "Finished processing bag file. Ctrl+C to terminate node." << std::endl;
+  std::cout << "Finished processing bag file." << std::endl;
 
-  ros::spin();
+  mySigintHandler(0);
 
   return 0;
 }

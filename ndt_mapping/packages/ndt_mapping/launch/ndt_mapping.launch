@@ -6,13 +6,14 @@
   <arg name="start_time" default="0" /> <!-- all timings are in seconds -->
   <arg name="play_duration" default="260" /> <!-- set negative to play all -->
   <arg name="namespace" default="" /> <!-- unused for now -->
-  <arg name="resolution" default="1.0"/>
+  <arg name="resolution" default="1.5"/>
   <arg name="step_size" default="0.05"/>
   <arg name="transformation_epsilon" default="0.0001"/>
-  <arg name="max_iteration" default="100"/>
-  <arg name="voxel_leaf_size" default="0.1"/>
-  <arg name="min_scan_range" default="5"/>
-  <arg name="min_add_scan_shift" default="0.5"/>  
+  <arg name="max_iteration" default="100" />
+  <arg name="voxel_leaf_size" default="0.1" />
+  <arg name="min_scan_range" default="2.5" />
+  <arg name="min_add_scan_shift" default="0.5" />  
+  <arg name="min_add_scan_yaw_diff" default="0.005" />
   
   <!-- tf from lidar frame to car frame -->
   <arg name="tf_x" default="1.2"/>
@@ -34,6 +35,7 @@
   	<param name="voxel_leaf_size" value="$(arg voxel_leaf_size)" />
   	<param name="min_scan_range" value="$(arg min_scan_range)" />
   	<param name="min_add_scan_shift" value="$(arg min_add_scan_shift)" />
+    <param name="min_add_scan_yaw_diff" value="$(arg min_add_scan_yaw_diff)" />
   	
   	<param name="tf_x" value="$(arg tf_x)" />
   	<param name="tf_y" value="$(arg tf_y)" />
