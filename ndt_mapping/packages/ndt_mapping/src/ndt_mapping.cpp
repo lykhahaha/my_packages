@@ -73,7 +73,7 @@
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_datatypes.h>
 
-// PCL libs
+// PCL & 3rd party libs
 #include <pcl/io/io.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_types.h>
@@ -88,7 +88,7 @@
 #endif
 
 // Here are the functions I wrote. De-comment to use
-#define TILE_WIDTH 70
+#define TILE_WIDTH 35 // Maximum range of LIDAR 32E is 70m
 // #define MY_DESLANT_TRANSFORM // set z, roll, pitch to 0
 #define MY_OUTPUT_DATA_CSV
 #define MY_EXTRACT_SCANPOSE // do not use this, this is to extract scans and poses to close loop
@@ -179,7 +179,7 @@ static std::string work_directory;
 // Leaf size of VoxelGrid filter.
 static double voxel_leaf_size = 0.1;
 
-static ros::Publisher ndt_map_pub;
+static ros::Publisher ndt_map_pub, current_scan_pub;
 
 static int initial_scan_loaded = 0;
 
@@ -402,6 +402,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   
   // Calculate the shift between added_pos and current_pos
   double shift = sqrt(pow(current_pose.x - added_pose.x, 2.0) + pow(current_pose.y - added_pose.y, 2.0));
+  t1 = std::chrono::system_clock::now();
   if(shift >= min_add_scan_shift || diff_yaw >= min_add_scan_yaw_diff)
   {
 #ifdef MY_EXTRACT_SCANPOSE
@@ -429,6 +430,9 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
     added_pose.yaw = current_pose.yaw;
     isMapUpdate = true;
   }
+  t2 = std::chrono::system_clock::now();
+  double ndt_keyscan_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
+
   // The rest of the code
 	transform.setOrigin(tf::Vector3(current_pose.x, current_pose.y, current_pose.z));
   q.setRPY(current_pose.roll, current_pose.pitch, current_pose.yaw);
@@ -458,6 +462,11 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   pcl::toROSMsg(*local_map_ptr, *map_msg_ptr);
   ndt_map_pub.publish(*map_msg_ptr);
 
+  sensor_msgs::PointCloud2::Ptr scan_msg_ptr(new sensor_msgs::PointCloud2);
+  transformed_scan_ptr->header.frame_id = "map";
+  pcl::toROSMsg(*transformed_scan_ptr, *scan_msg_ptr);
+  current_scan_pub.publish(*scan_msg_ptr);
+
   std::cout << "-----------------------------------------------------------------\n";
   std::cout << "Sequence number: " << input->header.seq << "\n";
   std::cout << "Number of scan points: " << scan_ptr->size() << " points.\n";
@@ -478,6 +487,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   std::cout << "Yaw Diff: " << diff_yaw << "\n";
   std::cout << "Update target map took: " << ndt_update_time << "ms.\n";
   std::cout << "NDT matching took: " << ndt_align_time << "ms.\n";
+  std::cout << "Updating map took: " << ndt_keyscan_time << "ms.\n";
   std::cout << "-----------------------------------------------------------------" << std::endl;
 }
 
@@ -496,8 +506,8 @@ static void map_maintenance_callback(pose local_pose)
     // Get local_map, a 3x3 tile map with the center being the local_key
     local_map.clear();
     Key tmp_key;
-    for(int x = local_key.x - 1; x <= local_key.x + 1; x++)
-      for(int y = local_key.y - 1; y <= local_key.y + 1; y++)
+    for(int x = local_key.x - 2, x_max = local_key.x + 2; x <= x_max; x++)
+      for(int y = local_key.y - 2, y_max = local_key.y + 2; y <= y_max; y++)
       {
         tmp_key.x = x;
         tmp_key.y = y;
@@ -548,6 +558,7 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
 #ifdef TILE_WIDTH
   config_stream << "Tile-map type used. Size of each tile: " 
                 << TILE_WIDTH << "x" << TILE_WIDTH << std::endl;
+  config_stream << "Size of local map: 5 tiles x 5 tiles." << std::endl;
 #endif // TILE_WIDTH
   config_stream << "Time taken: <tobefilledin>" << std::endl;
 
@@ -653,6 +664,7 @@ int main(int argc, char** argv)
   local_map.header.frame_id = "map";
 
   ndt_map_pub = nh.advertise<sensor_msgs::PointCloud2>("/local_map", 1000, true);
+  current_scan_pub = nh.advertise<sensor_msgs::PointCloud2>("/current_scan", 1, true);
 
   const char *home_directory;
   if((home_directory = getenv("HOME")) == NULL)
@@ -660,6 +672,7 @@ int main(int argc, char** argv)
 
   work_directory = std::string(home_directory) + "/ndt_custom/";
   // work_directory = ros::package::getPath("ndt_mapping") + "/results/new/";
+  std::cout << "Results are stored in: " << work_directory << std::endl;
 
 #ifdef MY_OUTPUT_DATA_CSV
   output_csv_file.open(work_directory + csv_file_name);

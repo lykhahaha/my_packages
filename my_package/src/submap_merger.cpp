@@ -13,6 +13,8 @@
 
 int main(int argc, char** argv)
 {
+  std::cout << "Reads map_pose.csv in the current directory,\n";
+  std::cout << "Load the pcd files indicated by the csv and merge them." << std::endl;
   // Initiate and get csv file
   ros::init(argc, argv, "submap_merger");
 
