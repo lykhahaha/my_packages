@@ -122,12 +122,12 @@ struct Key
 
 bool operator==(const Key& lhs, const Key& rhs)
 {
-    return lhs.x == rhs.x && lhs.y == rhs.y;
+  return lhs.x == rhs.x && lhs.y == rhs.y;
 }
 
 bool operator!=(const Key& lhs, const Key& rhs)
 {
-    return lhs.x != rhs.x || lhs.y != rhs.y;
+  return lhs.x != rhs.x || lhs.y != rhs.y;
 }
 
 namespace std
@@ -332,7 +332,15 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   t1 = std::chrono::system_clock::now();
 #ifdef USE_FAST_PCL
   ndt.omp_align(*output_cloud, init_guess);
-  fitness_score = ndt.omp_getFitnessScore();
+  fitness_score = ndt.getFitnessScore();
+  // Eigen::Matrix4f temp_localizer = ndt.getFinalTransformation();
+  // ndt.align(*output_cloud, init_guess);
+  // Eigen::Matrix4f temp_localizer2 = ndt.getFinalTransformation();
+  // std::cout << "Normal-OMP Transformation:\n";
+  // std::cout << temp_localizer2 - temp_localizer << std::endl;
+  // ndt.align(*output_cloud, init_guess);
+  // std::cout << "Normal-Normal Transformation:\n";
+  // std::cout << ndt.getFinalTransformation() - temp_localizer2 << std::endl;
 #else
   ndt.align(*output_cloud, init_guess);
   fitness_score = ndt.getFitnessScore();
@@ -420,7 +428,8 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
                     << std::endl;
 #endif // MY_EXTRACT_SCANPOSE
 	  pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, t_localizer);
-    add_new_scan(*transformed_scan_ptr);
+    // add_new_scan(*transformed_scan_ptr);
+    add_new_scan(*output_cloud);
     k++;
     added_pose.x = current_pose.x;
     added_pose.y = current_pose.y;
