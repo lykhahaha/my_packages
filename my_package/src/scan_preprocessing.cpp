@@ -42,7 +42,7 @@
 #include <pcl/io/io.h>
 #include <pcl/io/pcd_io.h>
 
-#include "lidar_pcl.h"
+#include <my_package/lidar_pcl.h>
 
 ros::Publisher current_scan_pub;
 

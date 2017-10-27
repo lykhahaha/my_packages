@@ -1,10 +1,8 @@
+#ifndef _LIDAR_PCL_H_
+#define _LIDAR_PCL_H_
+
 #define PCL_NO_PRECOMPILE // to create a custom pcl point type
 
-#include <memory.h>
-#include <boost/foreach.hpp>
-#include <stdlib.h>
-
-#include <pcl/point_types.h>
 #include <pcl_conversions/pcl_conversions.h>
 
 namespace lidar_pcl
@@ -12,8 +10,6 @@ namespace lidar_pcl
   struct PointXYZIR
   {
     PCL_ADD_POINT4D; // add x,y,z member + padding
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
     union
     {
       struct
@@ -23,6 +19,7 @@ namespace lidar_pcl
       };
       float data_c[4];
     };
+    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
     inline PointXYZIR()
     {
@@ -67,7 +64,15 @@ namespace lidar_pcl
     } 
   }EIGEN_ALIGN16;
 
-  // typedef struct PointXYZIR PointXYZIR;
+  inline float calculateMinAngleDist(float first, float second)
+  {
+    float difference = first - second;
+    if(difference >= 180.0)
+      return difference - 360.0;
+    if(difference <= -180.0)
+      return difference + 360.0;
+    return difference;
+  }
 
   void fromPCLPointCloud2(const pcl::PCLPointCloud2& msg, pcl::PointCloud<lidar_pcl::PointXYZIR>& cloud,
                           const pcl::MsgFieldMap& field_map)
@@ -87,7 +92,7 @@ namespace lidar_pcl
     lidar_pcl::PointXYZIR first_point(&msg.data[0]);
     float origin_angle = first_point.yaw();
     bool half_circle_check = false;
-    float stop_threshold = 1.0; // in degree
+    float stop_threshold = 45.0; // angle, in degree
 
     // memcpy each group of contiguous fields separately
     for (uint32_t row = 0; row < msg.height; ++row)
@@ -97,14 +102,14 @@ namespace lidar_pcl
       {
         const uint8_t* msg_data = row_data + col * msg.point_step;
 
-        // Get current point to determine whether to add to cloud
-        lidar_pcl::PointXYZIR current_point(&msg_data[0]);
-        float current_angle = current_point.yaw();
+        // Get relative angle position of current point
+        float current_relative_angle = calculateMinAngleDist(PointXYZIR(&msg_data[0]).yaw(), 
+                                                             origin_angle);
 
         // assuming CW (-) rotation (checked with all current models)
         if(!half_circle_check)
         {
-          if(std::fabs(current_angle - origin_angle) > 1.570796)
+          if(std::fabs(current_relative_angle) > 45.0)
             half_circle_check = true;
           BOOST_FOREACH (const pcl::detail::FieldMapping& mapping, field_map)
           {
@@ -114,7 +119,7 @@ namespace lidar_pcl
         }
         else // half_circle_check == true
         {
-          if(std::fabs(current_angle - origin_angle) > stop_threshold)
+          if(std::fabs(current_relative_angle) > stop_threshold)
           {
             BOOST_FOREACH (const pcl::detail::FieldMapping& mapping, field_map)
             {
@@ -153,3 +158,5 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(lidar_pcl::PointXYZIR,  // here we assume a XY
                                  (float, intensity, intensity)
                                  (uint16_t, ring, ring)
 )
+
+#endif // _LIDAR_PCL_H_
