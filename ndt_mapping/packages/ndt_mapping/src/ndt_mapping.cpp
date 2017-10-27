@@ -32,7 +32,10 @@
  Localization and mapping program using Normal Distributions Transform
 
  Yuki KITSUKAWA
-*/ 
+ */
+
+// #define OUTPUT  // If you want to output "position_log.txt", "#define OUTPUT".
+
 
 // Basic libs
 #include <chrono>
@@ -251,7 +254,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
 
   current_scan_time = input->header.stamp;
 
-  pcl::fromROSMsg(*input, tmp);
+  lidar_pcl::fromROSMsg(*input, tmp);
 
   for (pcl::PointCloud<pcl::PointXYZI>::const_iterator item = tmp.begin(); item != tmp.end(); item++)
   {
@@ -426,7 +429,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
                     << localizer_pose.roll << "," << localizer_pose.pitch << "," << localizer_pose.yaw
                     << std::endl;
 #endif // MY_EXTRACT_SCANPOSE
-	  pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, t_localizer);
+
     // add_new_scan(*transformed_scan_ptr);
     add_new_scan(*output_cloud);
     k++;
@@ -438,6 +441,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
     added_pose.yaw = current_pose.yaw;
     isMapUpdate = true;
   }
+  pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, t_localizer);
   t2 = std::chrono::system_clock::now();
   double ndt_keyscan_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
 

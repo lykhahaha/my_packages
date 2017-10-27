@@ -51,11 +51,6 @@ namespace lidar_pcl
       memcpy(&ring, source + 20, 4);
     }
 
-    inline float yaw()
-    {
-      return std::atan2(y, x) * 180 / 3.14159265359; // degree value
-    }
-
     friend std::ostream& operator<<(std::ostream& os, const PointXYZIR& ret) 
     { 
       os << "(" << ret.x << "," << ret.y << "," << ret.z << "," 
@@ -63,6 +58,19 @@ namespace lidar_pcl
       return os;  
     } 
   }EIGEN_ALIGN16;
+
+  inline float getYawAngleFromPtr(const uint8_t* data)
+  {
+    float _x, _y;
+    memcpy(&_x, data, 4);
+    memcpy(&_y, data + 4, 4);
+    return std::atan2(_y, _x) * 180 / 3.14159265359; // degree value
+  }
+
+  inline float getYawAngle(float _x, float _y)
+  {
+    return std::atan2(_y, _x) * 180 / 3.14159265359; // degree value
+  }
 
   inline float calculateMinAngleDist(float first, float second)
   {
@@ -74,8 +82,9 @@ namespace lidar_pcl
     return difference;
   }
 
-  void fromPCLPointCloud2(const pcl::PCLPointCloud2& msg, pcl::PointCloud<lidar_pcl::PointXYZIR>& cloud,
-                          const pcl::MsgFieldMap& field_map)
+  template <typename PointT>
+  void fromPCLPointCloud2Custom(const pcl::PCLPointCloud2& msg, pcl::PointCloud<PointT>& cloud,
+                                const pcl::MsgFieldMap& field_map)
   {
     // Copy info fields
     cloud.header   = msg.header;
@@ -89,8 +98,7 @@ namespace lidar_pcl
     uint8_t* cloud_data = reinterpret_cast<uint8_t*>(&cloud.points[0]);
     
     // Get first point data
-    lidar_pcl::PointXYZIR first_point(&msg.data[0]);
-    float origin_angle = first_point.yaw();
+    float origin_angle = getYawAngleFromPtr(&msg.data[0]);
     bool half_circle_check = false;
     float stop_threshold = 45.0; // angle, in degree
 
@@ -103,7 +111,8 @@ namespace lidar_pcl
         const uint8_t* msg_data = row_data + col * msg.point_step;
 
         // Get relative angle position of current point
-        float current_relative_angle = calculateMinAngleDist(PointXYZIR(&msg_data[0]).yaw(), 
+        
+        float current_relative_angle = calculateMinAngleDist(getYawAngleFromPtr(&msg_data[0]), 
                                                              origin_angle);
 
         // assuming CW (-) rotation (checked with all current models)
@@ -115,7 +124,7 @@ namespace lidar_pcl
           {
             memcpy(cloud_data + mapping.struct_offset, msg_data + mapping.serialized_offset, mapping.size);
           }
-          cloud_data += sizeof(lidar_pcl::PointXYZIR);
+          cloud_data += sizeof(PointT);
         }
         else // half_circle_check == true
         {
@@ -125,7 +134,7 @@ namespace lidar_pcl
             {
               memcpy(cloud_data + mapping.struct_offset, msg_data + mapping.serialized_offset, mapping.size);
             }
-            cloud_data += sizeof(lidar_pcl::PointXYZIR);
+            cloud_data += sizeof(PointT);
           }
           else
           {
@@ -141,13 +150,14 @@ namespace lidar_pcl
     }
   }
 
-  void fromROSMsg(const sensor_msgs::PointCloud2& cloud, pcl::PointCloud<lidar_pcl::PointXYZIR> &pcl_cloud)
+  template <typename PointT>
+  void fromROSMsg(const sensor_msgs::PointCloud2& cloud, pcl::PointCloud<PointT> &pcl_cloud)
   {
     ::pcl::PCLPointCloud2 pcl_pc2;
     ::pcl_conversions::toPCL(cloud, pcl_pc2);
     ::pcl::MsgFieldMap field_map;
-    ::pcl::createMapping<lidar_pcl::PointXYZIR>(pcl_pc2.fields, field_map);
-    fromPCLPointCloud2(pcl_pc2, pcl_cloud, field_map);
+    ::pcl::createMapping<PointT>(pcl_pc2.fields, field_map);
+    fromPCLPointCloud2Custom(pcl_pc2, pcl_cloud, field_map);
   }
 } // namespace lidar_pcl
 
