@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package>
+  <name>lidar_pcl</name>
+  <version>0.0.0</version>
+  <description>The LIDAR PCL package</description>
+  <maintainer email="phamngtuananh@gmail.com">Tuan Anh</maintainer>
+  <license>BSD</license>
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <build_depend>roscpp</build_depend>
+
+  <run_depend>roscpp</run_depend>
+  <export>
+  </export>
+</package>

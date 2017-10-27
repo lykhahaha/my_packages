@@ -25,6 +25,7 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_conversions
   sensor_msgs
   velodyne_pointcloud
+  lidar_pcl
   ${FAST_PCL_PACKAGES}
 )
 
@@ -34,7 +35,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES ndt_pcl
-  CATKIN_DEPENDS std_msgs velodyne_pointcloud autoware_msgs ${FAST_PCL_PACKAGES}
+  CATKIN_DEPENDS std_msgs velodyne_pointcloud autoware_msgs lidar_pcl ${FAST_PCL_PACKAGES}
 #  DEPENDS system_lib
 )
 
@@ -50,7 +51,6 @@ ELSE(PCL_VERSION VERSION_LESS "1.7.2")
 #SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -fopenmp -Wall -DUSE_FAST_PCL ${CMAKE_CXX_FLAGS}")
 SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -fopenmp -Wall ${CMAKE_CXX_FLAGS}")
 ENDIF(PCL_VERSION VERSION_LESS "1.7.2")
-
 
 #SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -fopenmp -Wall ${CMAKE_CXX_FLAGS}")
 

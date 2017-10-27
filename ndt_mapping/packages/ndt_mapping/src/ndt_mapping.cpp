@@ -32,10 +32,7 @@
  Localization and mapping program using Normal Distributions Transform
 
  Yuki KITSUKAWA
- */
-
-// #define OUTPUT  // If you want to output "position_log.txt", "#define OUTPUT".
-
+*/ 
 
 // Basic libs
 #include <chrono>
@@ -86,6 +83,8 @@
 #include <pcl/registration/ndt.h>
 #include <pcl/filters/voxel_grid.h>
 #endif
+
+#include <lidar_pcl/lidar_pcl.h>
 
 // Here are the functions I wrote. De-comment to use
 #define TILE_WIDTH 35 // Maximum range of LIDAR 32E is 70m
