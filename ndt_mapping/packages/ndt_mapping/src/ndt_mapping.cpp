@@ -92,19 +92,13 @@
 // Here are the functions I wrote. De-comment to use
 #define TILE_WIDTH 35 // Maximum range of LIDAR 32E is 70m
 // #define MY_DESLANT_TRANSFORM // set z, roll, pitch to 0
-#define MY_OUTPUT_DATA_CSV
 #define MY_EXTRACT_SCANPOSE // do not use this, this is to extract scans and poses to close loop
-static int k = 0; // key frame count
+static int add_scan_number = 1; // added frame count
 
 #ifdef MY_EXTRACT_SCANPOSE
-std::ofstream tf_map_csv_file;
-std::string tf_map_csv_file_name = "map_pose.csv";
+std::ofstream csv_stream;
+std::string csv_filename = "map_pose.csv";
 #endif // MY_EXTRACT_SCANPOSE
-
-#ifdef MY_OUTPUT_DATA_CSV
-std::ofstream output_csv_file;
-std::string csv_file_name = "allpose_data.csv";
-#endif
 
 struct pose
 {
@@ -193,8 +187,8 @@ static bool isMapUpdate = true;
 static double fitness_score;
 
 // File name get from time
-std::time_t now = std::time(NULL);
-std::tm* pnow = std::localtime(&now);
+std::time_t process_begin = std::time(NULL);
+std::tm* pnow = std::localtime(&process_begin);
 
 // Function to set z, roll, pitch of ndt-mapping = 0 at all times
 #ifdef MY_DESLANT_TRANSFORM
@@ -278,14 +272,14 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
     pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, tf_btol);
     add_new_scan(*transformed_scan_ptr);
     initial_scan_loaded = 1;
-#ifdef MY_EXTRACT_SCANPOSE  
-    pcl::io::savePCDFileBinary(work_directory + "scan0.pcd", *scan_ptr);
+#ifdef MY_EXTRACT_SCANPOSE
 
     // outputing into csv
-    tf_map_csv_file << "scan0.pcd" << "," << input->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
-                    << _tf_x << "," << _tf_y << "," << _tf_z << "," 
-                    << _tf_roll << "," << _tf_pitch << "," << _tf_yaw
-                    << std::endl;
+    csv_stream << add_scan_number << "," << input->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
+               << _tf_x << "," << _tf_y << "," << _tf_z << "," 
+               << _tf_roll << "," << _tf_pitch << "," << _tf_yaw
+               << std::endl;
+    add_scan_number++;
     return;
 #endif // MY_EXTRACT_SCANPOSE
   }
@@ -403,12 +397,6 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   diff_z = current_pose.z - previous_pose.z;
   diff_yaw = current_pose.yaw - previous_pose.yaw;
   diff = sqrt(diff_x * diff_x + diff_y * diff_y + diff_z * diff_z);
-
-#ifdef MY_OUTPUT_DATA_CSV // write data to file regardless of adding new scan
-    output_csv_file << current_scan_time.sec << "." << current_scan_time.nsec << "," // timestamp
-                    << current_pose.x << "," << current_pose.y << "," << current_pose.z << "," // x, y, z w.r.t. global map (global frame)
-                    << current_pose.roll << "," << current_pose.pitch << "," << current_pose.yaw << std::endl; // r, p, y w.r.t. global (global frame)
-#endif
   
   // Calculate the shift between added_pos and current_pos
   double shift = sqrt(pow(current_pose.x - added_pose.x, 2.0) + pow(current_pose.y - added_pose.y, 2.0));
@@ -416,23 +404,17 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   if(shift >= min_add_scan_shift || diff_yaw >= min_add_scan_yaw_diff)
   {
 #ifdef MY_EXTRACT_SCANPOSE
-    static double pcd_count = 1;
-    std::ostringstream scan_name;
-    scan_name << "scan" << pcd_count << ".pcd";
-    std::string filename = scan_name.str();
-    pcd_count++;
-    pcl::io::savePCDFileBinary(work_directory + filename, *scan_ptr);
 
     // outputing into csv
-    tf_map_csv_file << filename << "," << input->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
-                    << localizer_pose.x << "," << localizer_pose.y << "," << localizer_pose.z << ","
-                    << localizer_pose.roll << "," << localizer_pose.pitch << "," << localizer_pose.yaw
-                    << std::endl;
+    csv_stream << add_scan_number << "," << input->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
+               << localizer_pose.x << "," << localizer_pose.y << "," << localizer_pose.z << ","
+               << localizer_pose.roll << "," << localizer_pose.pitch << "," << localizer_pose.yaw
+               << std::endl;
 #endif // MY_EXTRACT_SCANPOSE
 
     // add_new_scan(*transformed_scan_ptr);
     add_new_scan(*output_cloud);
-    k++;
+    add_scan_number++;
     added_pose.x = current_pose.x;
     added_pose.y = current_pose.y;
     added_pose.z = current_pose.z;
@@ -441,6 +423,17 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
     added_pose.yaw = current_pose.yaw;
     isMapUpdate = true;
   }
+#ifdef MY_EXTRACT_SCANPOSE
+  else
+  {
+    // outputing into csv, with add_scan_number = 0
+    csv_stream << 0 << "," << input->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
+               << localizer_pose.x << "," << localizer_pose.y << "," << localizer_pose.z << ","
+               << localizer_pose.roll << "," << localizer_pose.pitch << "," << localizer_pose.yaw
+               << std::endl;
+  }
+#endif // MY_EXTRACT_SCANPOSE
+
   pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, t_localizer);
   t2 = std::chrono::system_clock::now();
   double ndt_keyscan_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
@@ -487,9 +480,9 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   std::cout << "NDT has converged: " << ndt.hasConverged() << "\n";
   std::cout << "Fitness score: " << fitness_score << "\n";
   std::cout << "Number of iteration: " << ndt.getFinalNumIteration() << "\n";
-  std::cout << "Guessed posed: " << "\n";
-  std::cout << "(" << guess_pose.x << ", " << guess_pose.y << ", " << guess_pose.z << ", " << guess_pose.roll
-            << ", " << guess_pose.pitch << ", " << guess_pose.yaw << ")\n";
+  // std::cout << "Guessed posed: " << "\n";
+  // std::cout << "(" << guess_pose.x << ", " << guess_pose.y << ", " << guess_pose.z << ", " << guess_pose.roll
+  //           << ", " << guess_pose.pitch << ", " << guess_pose.yaw << ")\n";
   std::cout << "(x,y,z,roll,pitch,yaw):" << "\n";
   std::cout << "(" << current_pose.x << ", " << current_pose.y << ", " << current_pose.z << ", " << current_pose.roll
             << ", " << current_pose.pitch << ", " << current_pose.yaw << ")\n";
@@ -556,10 +549,16 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
   std::string config_file = "config@" + std::string(cbuffer) + ".txt";
   config_stream.open(work_directory + config_file);
   std::strftime(cbuffer, 100, "%c", pnow);
+
+  std::time_t process_end = std::time(NULL);
+  double process_duration = difftime(process_end, process_begin); // calculate processing duration
+  int process_hr = int(process_duration / 3600);
+  int process_min = int((process_duration - process_hr * 3600) / 60);
+  double process_sec = process_duration - process_hr * 3600 - process_min * 60;
+
   config_stream << "Created @ " << std::string(cbuffer) << std::endl;
   config_stream << "Map: " << _bag_file << std::endl;
   config_stream << "Corrected end scan pose: ?\n" << std::endl;
-
   config_stream << "###\nResolution: " << ndt_res << std::endl;
   config_stream << "Step Size: " << step_size << std::endl;
   config_stream << "Transformation Epsilon: " << trans_eps << std::endl;
@@ -572,7 +571,10 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
                 << TILE_WIDTH << "x" << TILE_WIDTH << std::endl;
   config_stream << "Size of local map: 5 tiles x 5 tiles." << std::endl;
 #endif // TILE_WIDTH
-  config_stream << "Time taken: <tobefilledin>" << std::endl;
+  config_stream << "Time taken: " << process_hr << " hr "
+                                  << process_min << " min "
+                                  << process_sec << " sec" << std::endl;
+
 
   // All the default sigint handler does is call shutdown()
   ros::shutdown();
@@ -683,20 +685,14 @@ int main(int argc, char** argv)
     home_directory = getpwuid(getuid())->pw_dir; // get home directory
 
   work_directory = std::string(home_directory) + "/ndt_custom/";
-  // work_directory = ros::package::getPath("ndt_mapping") + "/results/new/";
   std::cout << "Results are stored in: " << work_directory << std::endl;
 
-#ifdef MY_OUTPUT_DATA_CSV
-  output_csv_file.open(work_directory + csv_file_name);
-  output_csv_file << "rostime,x,y,z,roll,pitch,yaw" << std::endl; //write file headers
-#endif // MY_OUTPUT_DATA_CSV
-
-#ifdef MY_EXTRACT_SCANPOSE
-  tf_map_csv_file.open(work_directory + tf_map_csv_file_name);
-  tf_map_csv_file << "filename,sequence,sec,nsec,x,y,z,roll,pitch,yaw" << std::endl;
+#ifdef MY_EXTRACT_SCANPOSE // map_pose.csv
+  csv_stream.open(work_directory + csv_filename);
+  csv_stream << "key,sequence,sec,nsec,x,y,z,roll,pitch,yaw" << std::endl;
 #endif // MY_EXTRACT_SCANPOSE
 
-  // Open bagfile
+  // Open bagfile with topics, timestamps indicated
   std::cout << "Loading " << _bag_file << std::endl;
   rosbag::Bag bag(_bag_file, rosbag::bagmode::Read);
   std::vector<std::string> reading_topics;
@@ -715,10 +711,9 @@ int main(int argc, char** argv)
     rosbag_start_time = tmp_view.getBeginTime() + ros::Duration(_start_time);
     ros::Duration sim_duration(_play_duration);
     rosbag_stop_time = rosbag_start_time + sim_duration;
-    
   }
   rosbag::View view(bag, rosbag::TopicQuery(reading_topics), rosbag_start_time, rosbag_stop_time);
-  int msg_size = view.size();
+  const int msg_size = view.size();
   int msg_pos = 0;
 
   // Looping, processing messages in bag file
@@ -755,7 +750,7 @@ int main(int argc, char** argv)
     //   }
     // }
     msg_pos++;
-    std::cout << "---Number of key scans: " << k << "\n";
+    std::cout << "---Number of key scans: " << add_scan_number << "\n";
     std::cout << "---Processed: " << msg_pos << "/" << msg_size << "\n";
     std::cout << "---Get local map took: " << std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count() / 1.0 << "ns.\n";
     std::cout << "---NDT Mapping took: " << std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count() / 1000.0 << "ms."<< std::endl;

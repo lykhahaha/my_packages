@@ -208,3 +208,11 @@ target_link_libraries(import_to_bag ${catkin_LIBRARIES})
 add_executable(scan_preprocessing src/scan_preprocessing.cpp)
 add_dependencies(scan_preprocessing ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg autoware_msgs_generate_messages_cpp)
 target_link_libraries(scan_preprocessing ${catkin_LIBRARIES})
+
+add_executable(map_splitter src/map_splitter.cpp)
+add_dependencies(map_splitter ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg autoware_msgs_generate_messages_cpp)
+target_link_libraries(map_splitter ${catkin_LIBRARIES})
+
+add_executable(pcd_merger src/pcd_merger.cpp)
+add_dependencies(pcd_merger ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg autoware_msgs_generate_messages_cpp)
+target_link_libraries(pcd_merger ${catkin_LIBRARIES})
