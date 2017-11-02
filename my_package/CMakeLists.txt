@@ -216,3 +216,7 @@ target_link_libraries(map_splitter ${catkin_LIBRARIES})
 add_executable(pcd_merger src/pcd_merger.cpp)
 add_dependencies(pcd_merger ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg autoware_msgs_generate_messages_cpp)
 target_link_libraries(pcd_merger ${catkin_LIBRARIES})
+
+add_executable(road_surface src/road_surface.cpp)
+add_dependencies(road_surface ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg autoware_msgs_generate_messages_cpp)
+target_link_libraries(road_surface ${catkin_LIBRARIES})
