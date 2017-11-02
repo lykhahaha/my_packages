@@ -40,7 +40,7 @@ int main(int argc, char** argv)
   // std::cout << "---------------------------------------" << std::endl;    
 
   // Input csv
-	std::string csv_in = "allpose_data.csv";
+	std::string csv_in = "map_pose.csv";
   std::cout << "Processing " << csv_in << " in the current directory" << std::endl;
 	std::ifstream csv_stream(csv_in);
 
@@ -48,10 +48,10 @@ int main(int argc, char** argv)
   std::ofstream out_stream;
   std::string csv_out = "delta_pose.csv";
   out_stream.open(csv_out);
-  out_stream << "rostime,dx,dy,dz,droll,dpitch,dyaw" << std::endl;
+  out_stream << "key,sequence,sec,nsec,dx,dy,dz,droll,dpitch,dyaw" << std::endl;
 
   // Place-holder for csv stream variables
-	std::string line, time_str, x_str, y_str, z_str, roll_str, pitch_str, yaw_str;
+	std::string line, key_str, seq_str, sec_str, nsec_str, x_str, y_str, z_str, roll_str, pitch_str, yaw_str;
   Eigen::Affine3d current_pose, previous_pose, relative_pose;
 
   // Get first pose to previous pose
@@ -61,7 +61,10 @@ int main(int argc, char** argv)
 
     std::stringstream line_stream(line);
 
-    getline(line_stream, time_str, ',');
+    getline(line_stream, key_str, ',');
+    getline(line_stream, seq_str, ',');
+    getline(line_stream, sec_str, ',');
+    getline(line_stream, nsec_str, ','); // unused for the 1st data
 
     getline(line_stream, x_str, ',');
     double x = std::stod(x_str);
@@ -85,7 +88,14 @@ int main(int argc, char** argv)
   	std::stringstream line_stream(line);
 
     // Get data value
-    getline(line_stream, time_str, ','); // we dont really need timing here
+    getline(line_stream, key_str, ',');
+    int key = std::stod(key_str);
+    getline(line_stream, seq_str, ',');
+    int seq = std::stod(seq_str);
+    getline(line_stream, sec_str, ',');
+    int sec = std::stod(sec_str); 
+    getline(line_stream, nsec_str, ',');
+    int nsec = std::stod(nsec_str);
     
     getline(line_stream, x_str, ',');
     double x = std::stod(x_str);
@@ -99,8 +109,6 @@ int main(int argc, char** argv)
     double pitch = std::stod(pitch_str);
     getline(line_stream, yaw_str);
     double yaw = std::stod(yaw_str);
-    // std::cout << "Original pose data:\n";
-    // std::cout << x << " " << y << " " << z << " " << roll << " " << pitch << " " << yaw << std::endl;
 
     // Get transformation
     pcl::getTransformation(x, y, z, roll, pitch, yaw, current_pose);
@@ -120,7 +128,8 @@ int main(int argc, char** argv)
     std::cout << "---------------------------------------" << std::endl;   
 
     // Update
-    out_stream << time_str << "," << x << "," << y << "," << z << "," 
+    out_stream << key << "," << seq << "," << sec << "," << nsec << ","
+               << x << "," << y << "," << z << "," 
                << roll << "," << pitch << "," << yaw << std::endl;
     previous_pose = current_pose;
 	}

@@ -129,7 +129,7 @@ int main(int argc, char** argv)
   rosbag::View view(bag, rosbag::TopicQuery(reading_topics));
 
   // Looping, processing messages in bag file
-  // int count = 0;
+  int count = 0;
   foreach(rosbag::MessageInstance const message, view)
   {
     sensor_msgs::PointCloud2::ConstPtr input_cloud = message.instantiate<sensor_msgs::PointCloud2>();
@@ -139,12 +139,12 @@ int main(int argc, char** argv)
       continue;
     }
     ndt_mapping_callback(input_cloud);
-    // count++;
-    // if(count > 1)
-    // {
-    //   std::cout << "Stopping since more than " << count << " messages are processed." << std::endl; 
-    //   return 0;
-    // }
+    count++;
+    if(count > 100)
+    {
+      std::cout << "Stopping since more than " << count << " messages are processed." << std::endl; 
+      return 0;
+    }
   }
   bag.close();
   std::cout << "Finished processing bag file." << std::endl;

@@ -248,7 +248,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
 
   current_scan_time = input->header.stamp;
 
-  lidar_pcl::fromROSMsg(*input, tmp);
+  lidar_pcl::fromROSMsg(*input, tmp); // note here
 
   for (pcl::PointCloud<pcl::PointXYZI>::const_iterator item = tmp.begin(); item != tmp.end(); item++)
   {
@@ -558,6 +558,8 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
 
   config_stream << "Created @ " << std::string(cbuffer) << std::endl;
   config_stream << "Map: " << _bag_file << std::endl;
+  config_stream << "Start time: " << _start_time << std::endl;
+  config_stream << "Play duration: " << _play_duration << std::endl;
   config_stream << "Corrected end scan pose: ?\n" << std::endl;
   config_stream << "###\nResolution: " << ndt_res << std::endl;
   config_stream << "Step Size: " << step_size << std::endl;
