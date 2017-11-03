@@ -250,7 +250,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
 
   lidar_pcl::fromROSMsg(*input, tmp); // note here
 
-  for (pcl::PointCloud<pcl::PointXYZI>::const_iterator item = tmp.begin(); item != tmp.end(); item++)
+  for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = tmp.begin(); item != tmp.end(); item++)
   {
     p.x = (double)item->x;
     p.y = (double)item->y;
