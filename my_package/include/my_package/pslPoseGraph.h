@@ -125,7 +125,7 @@ class PoseGraph3dErrorTerm {
 
 	// Compute inversion of b (T)
     Eigen::Quaternion<T> q_b_inverse = q_b.conjugate();
-	Eigen::Matrix<T, 3, 1> p_b_inverse = q_b_inverse*(-p_b);
+    Eigen::Matrix<T, 3, 1> p_b_inverse = q_b_inverse*(-p_b);
 
 	// Compute the relative rotation between the two frames.
     Eigen::Quaternion<T> q_ab_estimated = q_b_inverse * q_a;

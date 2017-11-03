@@ -19,15 +19,16 @@
 
 // ROS libs
 #include <ros/ros.h>
-// #include <rosbag/bag.h>
-// #include <rosbag/view.h>
+#include <rosbag/bag.h>
+#include <rosbag/view.h>
 // #include <ros/time.h>
 // #include <ros/duration.h>
 // #include <signal.h>
 // #include <std_msgs/Bool.h>
 // #include <std_msgs/Float32.h>
 #include <sensor_msgs/PointCloud2.h>
-// #include <visualization_msgs/Marker.h>
+#include <geometry_msgs/Point.h>
+#include <visualization_msgs/Marker.h>
 // #include <velodyne_pointcloud/point_types.h>
 // #include <velodyne_pointcloud/rawdata.h>
 
@@ -42,6 +43,8 @@
 
 #include <Eigen/Dense>
 
+// #define READ_PCD
+
 bool findRoadSurfaceNormalVector(const pcl::PointCloud<pcl::PointXYZI> cloud,
                                 pcl::PointCloud<pcl::PointXYZI>& plane_cloud,
                                 Eigen::Vector3d& plane_normal_vector,
@@ -50,6 +53,7 @@ bool findRoadSurfaceNormalVector(const pcl::PointCloud<pcl::PointXYZI> cloud,
                                 const uint32_t MAX_ITERATION = 50)
 {
   double optimal_cost = 99999999.0;
+  // uint32_t max_num_points = 0;
   srand(time(NULL));
   std::vector<uint32_t> inlier_indices;
   for(uint32_t iteration = 1; iteration <= MAX_ITERATION; iteration++)
@@ -90,8 +94,10 @@ bool findRoadSurfaceNormalVector(const pcl::PointCloud<pcl::PointXYZI> cloud,
     // std::cout << "Cost: " << current_cost << std::endl;
     if(currrent_inlier_indices.size() >= MIN_NUM_INLIERS
       && current_cost/currrent_inlier_indices.size() < optimal_cost)
+      // && currrent_inlier_indices.size() > max_num_points)
     {
       optimal_cost = current_cost/currrent_inlier_indices.size();
+      // max_num_points = currrent_inlier_indices.size();
       inlier_indices = currrent_inlier_indices;
     }
   }
@@ -143,6 +149,7 @@ int main(int argc, char** argv)
   ros::Publisher src_pub = nh.advertise<sensor_msgs::PointCloud2>("/current_scan", 1, true);
   ros::Publisher dst_pub = nh.advertise<sensor_msgs::PointCloud2>("/filtered_scan", 1, true);
 
+#ifdef READ_PCD
   if(argc < 2)
   {
     std::cout << "Please indicate a pcd file." << std::endl;
@@ -166,8 +173,8 @@ int main(int argc, char** argv)
   pcl::PointCloud<pcl::PointXYZI> tmp;
   for(int i = 0, i_end = src.size(); i < i_end; i++)
   {
-   // if(fabs(src.points[i].z + 2.5) < 1.5)
-     tmp.push_back(src.points[i]);
+    if(fabs(src.points[i].z + 2.5) < 1.5)
+    tmp.push_back(src.points[i]);
   }
   std::cout << "Done." << std::endl;
 
@@ -191,6 +198,92 @@ int main(int argc, char** argv)
   pcl::toROSMsg(dst, *cloud_msg_ptr);
   cloud_msg_ptr->header.frame_id = "map";
   dst_pub.publish(*cloud_msg_ptr);
+
+#else //read from a bagfile instead
+  ros::Publisher vec_pub = nh.advertise<visualization_msgs::Marker>("normal_vector", 0);
+  ros::Rate r(5);
+  if(argc < 2)
+  {
+    std::cout << "Please indicate the bag file." << std::endl;
+    std::cout << "rosrun my_package road_surface \"bagfile\"" << std::endl;
+    return -1;
+  }
+
+  std::string bagfile = argv[1];
+  std::string bagtopic = "/points_raw";
+  std::cout << "Reading bag: " << bagfile << " [topic: " << bagtopic << "]... " << std::flush;
+  rosbag::Bag bag(bagfile, rosbag::bagmode::Read);
+  std::vector<std::string> reading_topics;
+    reading_topics.push_back(std::string(bagtopic));
+  rosbag::View view(bag, rosbag::TopicQuery(reading_topics));
+  std::cout << "Done. Starting to process..." << std::endl;
+
+  foreach(rosbag::MessageInstance const message, view)
+  {
+    sensor_msgs::PointCloud2::ConstPtr input_cloud = message.instantiate<sensor_msgs::PointCloud2>();
+    if(input_cloud == NULL) // no data?
+    {
+      std::cout << "No input PointCloud2 available. Waiting..." << std::endl;
+      continue;
+    }
+    else // checking if pose and scan match
+    {
+      // Start processing
+      pcl::PointCloud<pcl::PointXYZI> src;
+      pcl::fromROSMsg(*input_cloud, src);
+      // Normally, z = -2.5 is the road surface, filtering out z > -1 or z < -4
+      pcl::PointCloud<pcl::PointXYZI> tmp;
+      for(int i = 0, i_end = src.size(); i < i_end; i++)
+      {
+       if(fabs(src.points[i].z + 2.5) < 1.5)
+         tmp.push_back(src.points[i]);
+      }
+
+      // RANSAC
+      pcl::PointCloud<pcl::PointXYZI> dst;
+      Eigen::Vector3d normal_vector;
+      if(!findRoadSurfaceNormalVector(tmp, dst, normal_vector))
+      {
+        std::cout << "RANSAC failed!" << std::endl;
+        return -1;
+      }
+
+      // Convert to ROS msgs and publish
+      sensor_msgs::PointCloud2::Ptr cloud_msg_ptr(new sensor_msgs::PointCloud2);
+      pcl::toROSMsg(src, *cloud_msg_ptr);
+      cloud_msg_ptr->header.frame_id = "map";
+      src_pub.publish(*cloud_msg_ptr);
+
+      pcl::toROSMsg(dst, *cloud_msg_ptr);
+      cloud_msg_ptr->header.frame_id = "map";
+      dst_pub.publish(*cloud_msg_ptr);
+
+      visualization_msgs::Marker marker;
+      geometry_msgs::Point arrow_tail;
+        arrow_tail.x = 0; arrow_tail.y = 0; arrow_tail.z = 0;
+      geometry_msgs::Point arrow_head;
+        arrow_head.x = normal_vector[0]; arrow_head.y = normal_vector[1]; arrow_head.z = normal_vector[2];
+      marker.header.frame_id = "map";
+      marker.header.stamp = ros::Time();
+      marker.ns = "velodyne";
+      marker.id = 0;
+      marker.type = visualization_msgs::Marker::ARROW;
+      marker.action = visualization_msgs::Marker::ADD;
+      marker.points.push_back(arrow_tail);
+      marker.points.push_back(arrow_head);
+      marker.scale.x = 0.1;
+      marker.scale.y = 0.3;
+      marker.scale.z = 0.3;
+      marker.color.a = 1.0; // Don't forget to set the alpha!
+      marker.color.r = 1.0;
+      marker.color.g = 1.0;
+      marker.color.b = 0.0;
+      vec_pub.publish(marker);
+
+      r.sleep();
+    }
+  }
+#endif // READ_PCD
 
   ros::spin();
 }
