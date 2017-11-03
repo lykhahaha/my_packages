@@ -42,14 +42,16 @@
 
 #include <Eigen/Dense>
 
-int findRoadSurfaceNormalVector(pcl::PointCloud<pcl::PointXYZI> cloud,
-                                std::vector<uint32_t>& inlier_indices,
+bool findRoadSurfaceNormalVector(const pcl::PointCloud<pcl::PointXYZI> cloud,
+                                pcl::PointCloud<pcl::PointXYZI>& plane_cloud,
+                                Eigen::Vector3d& plane_normal_vector,
                                 const uint32_t MIN_NUM_INLIERS = 5000,
                                 const double DIST_THRESHOLD = 0.2,
                                 const uint32_t MAX_ITERATION = 50)
 {
   double optimal_cost = 99999999.0;
   srand(time(NULL));
+  std::vector<uint32_t> inlier_indices;
   for(uint32_t iteration = 1; iteration <= MAX_ITERATION; iteration++)
   {
     // Get 3 random points
@@ -79,7 +81,7 @@ int findRoadSurfaceNormalVector(pcl::PointCloud<pcl::PointXYZI> cloud,
     {
       Eigen::Vector3d P(cloud.points[i].x, cloud.points[i].y, cloud.points[i].z);
       double point2plane_dist = std::fabs(n.dot(P - A));
-      if(point2plane_dist < DIST_THRESHOLD)
+      if(point2plane_dist < DIST_THRESHOLD) // if point matches current model
       { 
         currrent_inlier_indices.push_back(i);
         current_cost += point2plane_dist;
@@ -94,13 +96,43 @@ int findRoadSurfaceNormalVector(pcl::PointCloud<pcl::PointXYZI> cloud,
     }
   }
 
-  if(inlier_indices.size() < 0)
+  if(inlier_indices.size() == 0)
   {
-    std::cout << "RANSAC FAILED!" << std::endl;
-    return 0;
+    return false;
   }
-  std::cout << "RANSAC SUCCEEDED!" << std::endl;
-  return 1;
+  
+  // Optimize found plane, ref: https://gist.github.com/ialhashim/0a2554076a6cf32831ca
+  // Copy coordinates to matrix in Eigen format
+  plane_cloud.clear();
+  Eigen::Matrix< Eigen::Vector3d::Scalar, Eigen::Dynamic, Eigen::Dynamic > coord(3, inlier_indices.size());
+  for(uint32_t i = 0, i_end = inlier_indices.size(); i < i_end; ++i)
+  {
+    coord.col(i) = Eigen::Vector3d(cloud.points[inlier_indices[i]].x, cloud.points[inlier_indices[i]].y, cloud.points[inlier_indices[i]].z);
+    plane_cloud.push_back(cloud.points[inlier_indices[i]]); // also push to pointcloud to visualize later
+  }
+
+  // Calculate centroid
+  Eigen::Vector3d centroid(coord.row(0).mean(), coord.row(1).mean(), coord.row(2).mean()); // point-in-plane
+
+  // Subtract centroid
+  coord.row(0).array() -= centroid(0);
+  coord.row(1).array() -= centroid(1);
+  coord.row(2).array() -= centroid(2);
+
+  // we only need the left-singular matrix here
+  // http://math.stackexchange.com/questions/99299/best-fitting-plane-given-a-set-of-points
+  auto svd = coord.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV);
+  plane_normal_vector = svd.matrixU().rightCols<1>(); // normal-vector-of-plane
+
+  // Fix the vector to point upward
+  if(plane_normal_vector[2] < 0)
+  {
+    plane_normal_vector *= -1;
+  }
+  std::cout << "Result:\n";
+  std::cout << "\t^n = [" << plane_normal_vector[0] << "," << plane_normal_vector[1] << "," << plane_normal_vector[2] << "]\n";
+  std::cout << "\tPlane size: " << inlier_indices.size() << std::endl;
+  return true;
 }
 
 int main(int argc, char** argv)
@@ -131,52 +163,22 @@ int main(int argc, char** argv)
   // Start processing
   // Normally, z = -2.5 is the road surface, filtering out z > -1 or z < -4
   std::cout << "Filtering points near low ground... " << std::flush;
-  pcl::PointCloud<pcl::PointXYZI> tmp = src;
-  // for(int i = 0, i_end = src.size(); i < i_end; i++)
-  // {
-  //  // if(fabs(src.points[i].z + 2.5) < 1.5)
-  //    tmp.push_back(src.points[i]);
-  // }
+  pcl::PointCloud<pcl::PointXYZI> tmp;
+  for(int i = 0, i_end = src.size(); i < i_end; i++)
+  {
+   // if(fabs(src.points[i].z + 2.5) < 1.5)
+     tmp.push_back(src.points[i]);
+  }
   std::cout << "Done." << std::endl;
 
   // RANSAC
-  // const uint32_t MIN_NUM_INLIERS = 10000; // points needed to consider good
-  // const double DIST_THRESHOLD = 0.05;
-  // const uint32_t MAX_ITERATION = 50;
-  std::vector<uint32_t> inlier_indices;
-  int ransac_success = findRoadSurfaceNormalVector(tmp, inlier_indices);
-  
-  // Optimize found plane, ref: https://gist.github.com/ialhashim/0a2554076a6cf32831ca
-  // Copy coordinates to matrix in Eigen format
-  Eigen::Matrix< Eigen::Vector3d::Scalar, Eigen::Dynamic, Eigen::Dynamic > coord(3, inlier_indices.size());
   pcl::PointCloud<pcl::PointXYZI> dst;
-  for(uint32_t i = 0, i_end = inlier_indices.size(); i < i_end; ++i)
+  Eigen::Vector3d normal_vector;
+  if(!findRoadSurfaceNormalVector(tmp, dst, normal_vector))
   {
-    coord.col(i) = Eigen::Vector3d(tmp.points[inlier_indices[i]].x, tmp.points[inlier_indices[i]].y, tmp.points[inlier_indices[i]].z);
-    dst.push_back(tmp.points[inlier_indices[i]]); // also push to pointcloud to visualize later
+    std::cout << "RANSAC failed!" << std::endl;
+    return -1;
   }
-
-  // Calculate centroid
-  Eigen::Vector3d centroid(coord.row(0).mean(), coord.row(1).mean(), coord.row(2).mean()); // point-in-plane
-
-  // Subtract centroid
-  coord.row(0).array() -= centroid(0);
-  coord.row(1).array() -= centroid(1);
-  coord.row(2).array() -= centroid(2);
-
-  // we only need the left-singular matrix here
-  // http://math.stackexchange.com/questions/99299/best-fitting-plane-given-a-set-of-points
-  auto svd = coord.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV);
-  Eigen::Vector3d plane_normal = svd.matrixU().rightCols<1>(); // normal-vector-of-plane
-
-  // Fix the vector to point upward
-  if(plane_normal[2] < 0)
-  {
-    plane_normal *= -1;
-  }
-  std::cout << "Result:\n";
-  std::cout << "\t^n = [" << plane_normal[0] << "," << plane_normal[1] << "," << plane_normal[2] << "]\n";
-  std::cout << "\tPlane size: " << inlier_indices.size() << std::endl;
 
   // Convert to ROS msgs and publish
   std::cout << "Finished processing. Publishing to /current_scan and /filtered_scan." << std::endl;
