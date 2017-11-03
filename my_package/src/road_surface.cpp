@@ -14,8 +14,8 @@
 // #include <pwd.h>
 #include <time.h>
 
-// #include <boost/foreach.hpp> // to read bag file
-// #define foreach BOOST_FOREACH
+#include <boost/foreach.hpp> // to read bag file
+#define foreach BOOST_FOREACH
 
 // ROS libs
 #include <ros/ros.h>
@@ -69,8 +69,8 @@ int findRoadSurfaceNormalVector(pcl::PointCloud<pcl::PointXYZI> cloud,
     Eigen::Vector3d AB = B - A;
     Eigen::Vector3d AC = C - A;
     Eigen::Vector3d n = (AB.cross(AC)).normalized();
-    std::cout << "n >> " << std::endl;
-    std::cout << n << std::endl;
+    // std::cout << "n >> " << std::endl;
+    // std::cout << n << std::endl;
 
     // Iterate through all points
     double current_cost = 0.0;
@@ -85,7 +85,7 @@ int findRoadSurfaceNormalVector(pcl::PointCloud<pcl::PointXYZI> cloud,
         current_cost += point2plane_dist;
       }
     }
-    std::cout << "Cost: " << current_cost << std::endl;
+    // std::cout << "Cost: " << current_cost << std::endl;
     if(currrent_inlier_indices.size() >= MIN_NUM_INLIERS
       && current_cost/currrent_inlier_indices.size() < optimal_cost)
     {
@@ -168,8 +168,14 @@ int main(int argc, char** argv)
   // http://math.stackexchange.com/questions/99299/best-fitting-plane-given-a-set-of-points
   auto svd = coord.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV);
   Eigen::Vector3d plane_normal = svd.matrixU().rightCols<1>(); // normal-vector-of-plane
+
+  // Fix the vector to point upward
+  if(plane_normal[2] < 0)
+  {
+    plane_normal *= -1;
+  }
   std::cout << "Result:\n";
-  std::cout << "\tn = \n" << plane_normal << "\n";
+  std::cout << "\t^n = [" << plane_normal[0] << "," << plane_normal[1] << "," << plane_normal[2] << "]\n";
   std::cout << "\tPlane size: " << inlier_indices.size() << std::endl;
 
   // Convert to ROS msgs and publish
