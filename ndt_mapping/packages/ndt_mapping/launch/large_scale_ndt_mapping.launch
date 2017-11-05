@@ -4,7 +4,7 @@
   <!-- send table.xml to param server -->
   <arg name="bag" default="/home/zwu/LIDAR-DATA/3oct-around-pana1.bag" />
   <arg name="start_time" default="0" /> <!-- all timings are in seconds -->
-  <arg name="play_duration" default="25" /> <!-- set negative to play all -->
+  <arg name="play_duration" default="-1" /> <!-- set negative to play all -->
   <arg name="namespace" default="" /> <!-- unused for now -->
   <arg name="resolution" default="1.5"/> 
   <arg name="step_size" default="0.05"/>
@@ -24,7 +24,7 @@
   <arg name="tf_yaw" default="0.0"/>
 
   <!-- rosrun ndt_localizer ndt_mapping  -->
-  <node pkg="ndt_mapping" type="ndt_mapping" name="offline_ndt_mapping" output="screen">
+  <node pkg="ndt_mapping" type="large_scale_ndt_mapping" name="large_scale_ndt_mapping" output="screen">
   	<param name="bag_file" value="$(arg bag)" />
   	<param name="start_time" value="$(arg start_time)" />
   	<param name="play_duration" value="$(arg play_duration)" />
