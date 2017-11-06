@@ -16,6 +16,7 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::NDTCorrectedLidarMapping()
   , initial_scan_loaded_(false)
   , is_map_updated_(false)
   , ndt_pose_({0., 0., 0., 0., 0., 0.})
+  , current_pose_({0., 0., 0., 0., 0., 0.})
   , previous_pose_({0., 0., 0., 0., 0., 0.})
   , added_pose_({0., 0., 0., 0., 0., 0.})
   , previous_velocity_({0., 0., 0., 0., 0., 0.})
@@ -311,49 +312,38 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
                  static_cast<double>(t_base_link(2, 0)), static_cast<double>(t_base_link(2, 1)),
                  static_cast<double>(t_base_link(2, 2)));
 
-  // Update current_pose
-  Pose current_pose;
-  current_pose.x = t_base_link(0, 3);
-  current_pose.y = t_base_link(1, 3);
-  current_pose.z = t_base_link(2, 3);
-  mat_b.getRPY(current_pose.roll, current_pose.pitch, current_pose.yaw, 1);
-
-  // Broadcast TF
-  tf::Transform transform;
-  tf::Quaternion q;
-  transform.setOrigin(tf::Vector3(current_pose.x, current_pose.y, current_pose.z));
-  q.setRPY(current_pose.roll, current_pose.pitch, current_pose.yaw);
-  transform.setRotation(q);
-
-  tf::TransformBroadcaster br;
-  br.sendTransform(tf::StampedTransform(transform, current_scan_time, "map", "base_link"));
+  // Update current_pose_
+  current_pose_.x = t_base_link(0, 3);
+  current_pose_.y = t_base_link(1, 3);
+  current_pose_.z = t_base_link(2, 3);
+  mat_b.getRPY(current_pose_.roll, current_pose_.pitch, current_pose_.yaw, 1);
 
   // Check whether to add this scan to map
-  double x_diff = current_pose.x - added_pose_.x;
-  double y_diff = current_pose.y - added_pose_.y;
-  double z_diff = current_pose.z - added_pose_.z;
+  double x_diff = current_pose_.x - added_pose_.x;
+  double y_diff = current_pose_.y - added_pose_.y;
+  double z_diff = current_pose_.z - added_pose_.z;
   double translation_diff = sqrt(x_diff * x_diff + y_diff * y_diff + z_diff * z_diff);
-  double rotation_diff = current_pose.yaw - added_pose_.yaw;
+  double rotation_diff = current_pose_.yaw - added_pose_.yaw;
   if(translation_diff >= min_add_scan_shift_ || rotation_diff >= min_add_scan_yaw_diff_)
   {
     addNewScan(transformed_scan_ptr_);
     added_scan_num_++;
-    added_pose_.x = current_pose.x;
-    added_pose_.y = current_pose.y;
-    added_pose_.z = current_pose.z;
-    added_pose_.roll = current_pose.roll;
-    added_pose_.pitch = current_pose.pitch;
-    added_pose_.yaw = current_pose.yaw;
+    added_pose_.x = current_pose_.x;
+    added_pose_.y = current_pose_.y;
+    added_pose_.z = current_pose_.z;
+    added_pose_.roll = current_pose_.roll;
+    added_pose_.pitch = current_pose_.pitch;
+    added_pose_.yaw = current_pose_.yaw;
     is_map_updated_ = true;
   }
 
   // Update <previous> values
-  previous_pose_.x = current_pose.x;
-  previous_pose_.y = current_pose.y;
-  previous_pose_.z = current_pose.z;
-  previous_pose_.roll = current_pose.roll;
-  previous_pose_.pitch = current_pose.pitch;
-  previous_pose_.yaw = current_pose.yaw;
+  previous_pose_.x = current_pose_.x;
+  previous_pose_.y = current_pose_.y;
+  previous_pose_.z = current_pose_.z;
+  previous_pose_.roll = current_pose_.roll;
+  previous_pose_.pitch = current_pose_.pitch;
+  previous_pose_.yaw = current_pose_.yaw;
 
   previous_velocity_.x = ndt_velocity.x;
   previous_velocity_.y = ndt_velocity.y;
@@ -373,7 +363,7 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
   previous_scan_time_.nsec = current_scan_time.nsec;
 
   // Finally, update local_map_
-  updateLocalMap(current_pose);
+  updateLocalMap(current_pose_);
 }
 
 #endif // NDT_CORRECTED_LIDAR_MAPPING_H_

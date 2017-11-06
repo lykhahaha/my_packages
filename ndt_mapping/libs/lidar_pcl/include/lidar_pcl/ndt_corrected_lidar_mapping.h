@@ -34,7 +34,7 @@
 // #include <velodyne_pointcloud/point_types.h>
 // #include <velodyne_pointcloud/rawdata.h>
 
-#include <tf/transform_broadcaster.h>
+// #include <tf/transform_broadcaster.h>
 #include <tf/transform_datatypes.h>
 
 // // PCL & 3rd party libs
@@ -80,7 +80,7 @@ namespace lidar_pcl
     bool is_map_updated_;
 
     Eigen::Matrix4f tf_btol_, tf_ltob_;
-    Pose ndt_pose_, previous_pose_, added_pose_;
+    Pose ndt_pose_, current_pose_, previous_pose_, added_pose_;
     Vel previous_velocity_;
     Accel previous_accel_;
     ros::Time previous_scan_time_;
@@ -138,6 +138,11 @@ namespace lidar_pcl
       return ndt_pose_;
     }
 
+    inline Pose vehiclePose()
+    {
+      return current_pose_;
+    }
+
     inline double fitnessScore()
     {
       return fitness_score_;
@@ -151,6 +156,11 @@ namespace lidar_pcl
     inline pcl::PointCloud<PointT> localMap()
     {
       return local_map_;
+    }
+
+    inline std::unordered_map<Key, pcl::PointCloud<PointT>> worldMap()
+    {
+      return world_map_;
     }
 
     inline pcl::PointCloud<PointT> transformedScan()
