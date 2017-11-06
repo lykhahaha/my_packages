@@ -42,49 +42,45 @@ int main(int argc, char** argv)
   std::string csvfile = "map_pose.csv";
   std::cout << "Reading " << csvfile << " in the current directory.\n";
   std::cout << "Please ensure that the format of the csv file is:" << std::endl;
-  std::cout << "\t{filename, sequence, sec, nsec, x, y, z, roll, pitch, yaw}" << std::endl; 
+  std::cout << "\t{key, sequence, sec, nsec, x, y, z, roll, pitch, yaw}" << std::endl; 
   // TODO: remove filename in later versions
   std::ifstream csv_stream(csvfile);
 
   // Place-holder for variables
-	std::string line, pcd_filename, seq_str, sec_str, nsec_str, x_str, y_str, z_str, roll_str, pitch_str, yaw_str;
+  std::string line, key_str, seq_str, sec_str, nsec_str, x_str, y_str, z_str, roll_str, pitch_str, yaw_str;
   pcl::PointCloud<pcl::PointXYZI> map;
-  uint submap_count = 0, seq;
+  unsigned int seq, key;
   double x, y, z, roll, pitch, yaw;
-  bool isgetline = false;
 
   getline(csv_stream, line); // to skip header line
   std::cout << "Finished. Starting merging submaps..." << std::endl;
   foreach(rosbag::MessageInstance const message, view)
   {
-    if(!isgetline) // get new data and process values
+    // get new data and process values
+    if(!getline(csv_stream, line))
     {
-      if(!getline(csv_stream, line))
-      {
-        break; // end of csv
-      }
-      isgetline = true;
-
-      submap_count++;
-      std::stringstream line_stream(line);
-      getline(line_stream, pcd_filename, ',');
-      getline(line_stream, seq_str, ',');
-      seq = std::stod(seq_str);
-      getline(line_stream, sec_str, ',');
-      getline(line_stream, nsec_str, ','); // filename, sec, nsec values are unused
-      getline(line_stream, x_str, ',');
-      x = std::stod(x_str);
-      getline(line_stream, y_str, ',');
-      y = std::stod(y_str);
-      getline(line_stream, z_str, ',');
-      z = std::stod(z_str);
-      getline(line_stream, roll_str, ',');
-      roll = std::stod(roll_str);
-      getline(line_stream, pitch_str, ',');
-      pitch = std::stod(pitch_str);
-      getline(line_stream, yaw_str);
-      yaw = std::stod(yaw_str);
+      break; // end of csv
     }
+
+    std::stringstream line_stream(line);
+    getline(line_stream, key_str, ',');
+    key = std::stod(key_str);
+    getline(line_stream, seq_str, ',');
+    seq = std::stod(seq_str);
+    getline(line_stream, sec_str, ',');
+    getline(line_stream, nsec_str, ','); // sec, nsec values are unused
+    getline(line_stream, x_str, ',');
+    x = std::stod(x_str);
+    getline(line_stream, y_str, ',');
+    y = std::stod(y_str);
+    getline(line_stream, z_str, ',');
+    z = std::stod(z_str);
+    getline(line_stream, roll_str, ',');
+    roll = std::stod(roll_str);
+    getline(line_stream, pitch_str, ',');
+    pitch = std::stod(pitch_str);
+    getline(line_stream, yaw_str);
+    yaw = std::stod(yaw_str);
 
     sensor_msgs::PointCloud2::ConstPtr input_cloud = message.instantiate<sensor_msgs::PointCloud2>();
     if(input_cloud == NULL) // no data?
@@ -92,19 +88,21 @@ int main(int argc, char** argv)
       std::cout << "No input PointCloud available. Waiting..." << std::endl;
       continue;
     }
-    else // checking if pose and scan match
+    else // check whether the sequence match
     {
-      if(input_cloud->header.seq < seq)
+      if(input_cloud->header.seq != seq)
       {
-        continue;
-      }
-      else if(input_cloud->header.seq > seq)
-      {
-        std::cout << "Error: input_cloud->header.seq > seq (" << input_cloud->header.seq << " > " << seq << ")" << std::endl;
+        std::cout << "Error: input_cloud->header.seq != seq (" << input_cloud->header.seq << " != " << seq << ")" << std::endl;
         return -1;
       }
     }
-    // Start do tf
+    // Skip unadded scan (has key = 0)
+    if(key == 0)
+    {
+      std::cout << "Skipping unadded scan." << std::endl;
+      continue;
+    }
+
     // Create transformation matrix
     Eigen::Affine3f transform = pcl::getTransformation(x, y, z, roll, pitch, yaw);
 
@@ -117,7 +115,7 @@ int main(int argc, char** argv)
     map += dst;
 
     // Show output
-    std::cout << "Number: " << submap_count << "\n";
+    std::cout << "Number: " << key << "\n";
     std::cout << "Sequence: " << seq << "\n";
     std::cout << "Number of scan points: " << dst.size() << "\n";
     std::cout << "Number of map points: " << map.size() << "\n";
@@ -125,7 +123,6 @@ int main(int argc, char** argv)
     std::cout << "Transformation Matrix: \n";
     std::cout << transform.matrix() << std::endl;
     std::cout << "---------------------------------------" << std::endl;
-    isgetline = false;
   }
   bag.close();
   std::cout << "Finished processing bag file." << std::endl;

@@ -43,7 +43,7 @@
 
 #include <Eigen/Dense>
 
-// #define READ_PCD
+#define READ_PCD
 
 bool findRoadSurfaceNormalVector(const pcl::PointCloud<pcl::PointXYZI> cloud,
                                 pcl::PointCloud<pcl::PointXYZI>& plane_cloud,
