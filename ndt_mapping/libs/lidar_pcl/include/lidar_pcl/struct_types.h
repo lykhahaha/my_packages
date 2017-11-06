@@ -5,7 +5,7 @@
   Defining Key structure for unordered map hashing style for mapping 
 */
 
-struct pose
+struct Pose
 {
   double x;
   double y;
@@ -15,7 +15,17 @@ struct pose
   double yaw;
 };
 
-struct velocity
+struct Vel
+{
+  double x;
+  double y;
+  double z;
+  double roll;
+  double pitch;
+  double yaw;
+};
+
+struct Accel
 {
   double x;
   double y;

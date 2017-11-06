@@ -100,6 +100,23 @@ std::ofstream csv_stream;
 std::string csv_filename = "map_pose.csv";
 #endif // MY_EXTRACT_SCANPOSE
 
+struct pose
+{
+  double x;
+  double y;
+  double z;
+  double roll;
+  double pitch;
+  double yaw;
+};
+
+struct velocity
+{
+  double x;
+  double y;
+  double z;
+};
+
 // global variables
 static pose previous_pose, guess_pose, current_pose, ndt_pose, added_pose, localizer_pose;
 
