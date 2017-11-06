@@ -6,17 +6,23 @@
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT>
 lidar_pcl::NDTCorrectedLidarMapping<PointT>::NDTCorrectedLidarMapping()
-  : previous_key_({0, 0})
+  : transformed_scan_ptr_(new pcl::PointCloud<PointT>())
+  , previous_key_({0, 0})
   , min_add_scan_shift_(1.0)
   , min_add_scan_yaw_diff_(0.005)
   , voxel_leaf_size_(0.1)
+  , fitness_score_(0.)
+  , added_scan_num_(0)
   , initial_scan_loaded_(false)
   , is_map_updated_(false)
+  , ndt_pose_({0., 0., 0., 0., 0., 0.})
   , previous_pose_({0., 0., 0., 0., 0., 0.})
+  , added_pose_({0., 0., 0., 0., 0., 0.})
   , previous_velocity_({0., 0., 0., 0., 0., 0.})
   , previous_accel_({0., 0., 0., 0., 0., 0.})
 {
   local_map_.header.frame_id = "map";
+  transformed_scan_ptr_->header.frame_id = "map";
   ndt_.setTransformationEpsilon(0.001);
   ndt_.setStepSize(0.05);
   ndt_.setResolution(2.5);
@@ -48,9 +54,9 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::setTFCalibration(double tf_x,
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT> void
-lidar_pcl::NDTCorrectedLidarMapping<PointT>::addNewScan(const pcl::PointCloud<PointT> new_scan)
+lidar_pcl::NDTCorrectedLidarMapping<PointT>::addNewScan(const PointCloudPtr new_scan_ptr)
 {
-  for(PointCloudConstIter item = new_scan.begin(); item < new_scan.end(); item++)
+  for(PointCloudConstIter item = new_scan_ptr->begin(); item < new_scan_ptr->end(); item++)
   {
     Key key;
     key.x = int(floor(item->x / map_tile_width_));
@@ -58,7 +64,7 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::addNewScan(const pcl::PointCloud<Po
     world_map_[key].push_back(*item);
   }
 
-  local_map_ += new_scan;
+  local_map_ += *new_scan_ptr;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -167,9 +173,9 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::correctLidarScan(pcl::PointCloud<Po
     Pose this_packet_lidar_pose = {current_lidar_pose.x - velocity.x * offset_time - 0.5 * acceleration.x * interval * interval,
                                    current_lidar_pose.y - velocity.y * offset_time - 0.5 * acceleration.y * interval * interval,
                                    current_lidar_pose.z - velocity.z * offset_time - 0.5 * acceleration.z * interval * interval,
-                                   current_lidar_pose.roll - velocity.roll * offset_time - 0.5 * acceleration.roll * interval * interval,
+                                   current_lidar_pose.roll  - velocity.roll  * offset_time - 0.5 * acceleration.roll  * interval * interval,
                                    current_lidar_pose.pitch - velocity.pitch * offset_time - 0.5 * acceleration.pitch * interval * interval,
-                                   current_lidar_pose.yaw - velocity.yaw * offset_time - 0.5 * acceleration.yaw * interval * interval}; 
+                                   current_lidar_pose.yaw   - velocity.yaw   * offset_time - 0.5 * acceleration.yaw   * interval * interval}; 
 
     Eigen::Affine3f transform = pcl::getTransformation(this_packet_lidar_pose.x, 
                                                        this_packet_lidar_pose.y, 
@@ -184,19 +190,40 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::correctLidarScan(pcl::PointCloud<Po
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+template <typename PointT> bool
+lidar_pcl::NDTCorrectedLidarMapping<PointT>::correctedScanNDTConvergence(Vel& estimated_velocity, 
+                                                                         const Vel& ndt_velocity, 
+                                                                         const double interval)
+{
+  if(  (estimated_velocity.x - ndt_velocity.x) * interval < CORRECTED_NDT_DISTANCE_THRESHOLD_
+    && (estimated_velocity.y - ndt_velocity.y) * interval < CORRECTED_NDT_DISTANCE_THRESHOLD_
+    && (estimated_velocity.z - ndt_velocity.z) * interval < CORRECTED_NDT_DISTANCE_THRESHOLD_
+    && (estimated_velocity.roll  - ndt_velocity.roll)  * interval < CORRECTED_NDT_ANGLE_THRESHOLD_
+    && (estimated_velocity.pitch - ndt_velocity.pitch) * interval < CORRECTED_NDT_ANGLE_THRESHOLD_
+    && (estimated_velocity.yaw   - ndt_velocity.yaw)   * interval < CORRECTED_NDT_ANGLE_THRESHOLD_)
+    return true;
+  else
+  {
+    estimated_velocity = ndt_velocity;
+    return false;
+  }
+}
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT> void
 lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<PointT> new_scan,
                                                           const ros::Time current_scan_time)
 {
   PointCloudPtr new_scan_ptr(new pcl::PointCloud<PointT>(new_scan));
-  PointCloudPtr transformed_scan_ptr(new pcl::PointCloud<PointT>());
+  transformed_scan_ptr_->clear();
 
   // If this is the first scan, just push it into map then exit
   if(initial_scan_loaded_ == false)
   {
-    pcl::transformPointCloud(*new_scan_ptr, *transformed_scan_ptr, tf_btol_);
-    addNewScan(*transformed_scan_ptr);
+    pcl::transformPointCloud(*new_scan_ptr, *transformed_scan_ptr_, tf_btol_);
+    addNewScan(transformed_scan_ptr_);
     initial_scan_loaded_ = true;
+    added_scan_num_++;
     return;
   }
 
@@ -217,21 +244,23 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
   double scan_interval = getScanInterval(current_scan_time, previous_scan_time_);
   Vel estimated_velocity = estimateCurrentVelocity(previous_velocity_, previous_accel_, scan_interval);
   Pose estimated_pose = estimateCurrentPose(previous_pose_, previous_velocity_, previous_accel_, scan_interval);
-  correctLidarScan(*filtered_scan_ptr, estimated_velocity, previous_accel_, scan_interval);
 
   Eigen::Matrix4f t_localizer(Eigen::Matrix4f::Identity());
-  while(/*some conditions to stop NDT*/1)
+  Vel ndt_velocity;
+  Accel ndt_acceleration;
+  unsigned int iter_num = 0;
+  do
   {
+    iter_num++;
+    correctLidarScan(*filtered_scan_ptr, estimated_velocity, previous_accel_, scan_interval);
     ndt_.setInputSource(filtered_scan_ptr);
     Eigen::Matrix4f init_guess = getInitNDTPose(estimated_pose);
     PointCloudPtr output_cloud(new pcl::PointCloud<PointT>);
 
     #ifdef USE_FAST_PCL
     ndt_.omp_align(*output_cloud, init_guess);
-    double fitness_score = ndt_.getFitnessScore();
     #else
     ndt_.align(*output_cloud, init_guess);
-    double fitness_score = ndt_.getFitnessScore();
     #endif
 
     // Check the NDT result's pose/vel/accel to compare
@@ -244,17 +273,36 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
                    static_cast<double>(t_localizer(2, 0)), static_cast<double>(t_localizer(2, 1)),
                    static_cast<double>(t_localizer(2, 2)));
 
-    
+    ndt_pose_.x = t_localizer(0, 3);
+    ndt_pose_.y = t_localizer(1, 3);
+    ndt_pose_.z = t_localizer(2, 3);
+    mat_l.getRPY(ndt_pose_.roll, ndt_pose_.pitch, ndt_pose_.yaw, 1);
 
+    // Re-update current vel/accel with the newly achieved pose
+    ndt_acceleration.x = 2.0 * (ndt_pose_.x - previous_pose_.x - previous_velocity_.x * scan_interval) / (scan_interval * scan_interval);
+    ndt_acceleration.y = 2.0 * (ndt_pose_.y - previous_pose_.y - previous_velocity_.y * scan_interval) / (scan_interval * scan_interval);
+    ndt_acceleration.z = 2.0 * (ndt_pose_.z - previous_pose_.z - previous_velocity_.z * scan_interval) / (scan_interval * scan_interval);
+    ndt_acceleration.roll = 2.0 * (ndt_pose_.roll - previous_pose_.roll - previous_velocity_.roll * scan_interval) / (scan_interval * scan_interval);
+    ndt_acceleration.pitch = 2.0 * (ndt_pose_.pitch - previous_pose_.pitch - previous_velocity_.pitch * scan_interval) / (scan_interval * scan_interval);
+    ndt_acceleration.yaw = 2.0 * (ndt_pose_.yaw - previous_pose_.yaw - previous_velocity_.yaw * scan_interval) / (scan_interval * scan_interval);
 
-    // Update localizer_pose.
-    // localizer_pose.x = t_localizer(0, 3);
-    // localizer_pose.y = t_localizer(1, 3);
-    // localizer_pose.z = t_localizer(2, 3);
-    // mat_l.getRPY(localizer_pose.roll, localizer_pose.pitch, localizer_pose.yaw, 1);
+    ndt_velocity.x = 2.0 * (ndt_pose_.x - previous_pose_.x) / scan_interval - previous_velocity_.x;
+    ndt_velocity.y = 2.0 * (ndt_pose_.y - previous_pose_.y) / scan_interval - previous_velocity_.y;
+    ndt_velocity.z = 2.0 * (ndt_pose_.z - previous_pose_.z) / scan_interval - previous_velocity_.z;
+    ndt_velocity.roll = 2.0 * (ndt_pose_.roll - previous_pose_.roll) / scan_interval - previous_velocity_.roll;
+    ndt_velocity.pitch = 2.0 * (ndt_pose_.pitch - previous_pose_.pitch) / scan_interval - previous_velocity_.pitch;
+    ndt_velocity.yaw = 2.0 * (ndt_pose_.yaw - previous_pose_.yaw) / scan_interval - previous_velocity_.yaw;
   }
+  while(iter_num <= CORRECTED_NDT_ITERATION_THRESHOLD_ && !correctedScanNDTConvergence(estimated_velocity, ndt_velocity, scan_interval));
+
+  #ifdef USE_FAST_PCL
+  fitness_score_ = ndt_.omp_getFitnessScore();
+  #else
+  fitness_score_ = ndt_.getFitnessScore();
+  #endif // USE_FAST_PCL
 
   // Update base_link pose
+  pcl::transformPointCloud(*new_scan_ptr, *transformed_scan_ptr_, t_localizer);
   Eigen::Matrix4f t_base_link = t_localizer * tf_ltob_;
   tf::Matrix3x3 mat_b;
   mat_b.setValue(static_cast<double>(t_base_link(0, 0)), static_cast<double>(t_base_link(0, 1)),
@@ -263,20 +311,69 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
                  static_cast<double>(t_base_link(2, 0)), static_cast<double>(t_base_link(2, 1)),
                  static_cast<double>(t_base_link(2, 2)));
 
-  // Update ndt_pose.
-  // ndt_pose.x = t_base_link(0, 3);
-  // ndt_pose.y = t_base_link(1, 3);
-  // ndt_pose.z = t_base_link(2, 3);
-  // mat_b.getRPY(ndt_pose.roll, ndt_pose.pitch, ndt_pose.yaw, 1);
+  // Update current_pose
+  Pose current_pose;
+  current_pose.x = t_base_link(0, 3);
+  current_pose.y = t_base_link(1, 3);
+  current_pose.z = t_base_link(2, 3);
+  mat_b.getRPY(current_pose.roll, current_pose.pitch, current_pose.yaw, 1);
 
-  // current_pose.x = ndt_pose.x;
-  // current_pose.y = ndt_pose.y;
-  // current_pose.z = ndt_pose.z;
-  // current_pose.roll = ndt_pose.roll;
-  // current_pose.pitch = ndt_pose.pitch;
-  // current_pose.yaw = ndt_pose.yaw;
+  // Broadcast TF
+  tf::Transform transform;
+  tf::Quaternion q;
+  transform.setOrigin(tf::Vector3(current_pose.x, current_pose.y, current_pose.z));
+  q.setRPY(current_pose.roll, current_pose.pitch, current_pose.yaw);
+  transform.setRotation(q);
 
+  tf::TransformBroadcaster br;
+  br.sendTransform(tf::StampedTransform(transform, current_scan_time, "map", "base_link"));
 
+  // Check whether to add this scan to map
+  double x_diff = current_pose.x - added_pose_.x;
+  double y_diff = current_pose.y - added_pose_.y;
+  double z_diff = current_pose.z - added_pose_.z;
+  double translation_diff = sqrt(x_diff * x_diff + y_diff * y_diff + z_diff * z_diff);
+  double rotation_diff = current_pose.yaw - added_pose_.yaw;
+  if(translation_diff >= min_add_scan_shift_ || rotation_diff >= min_add_scan_yaw_diff_)
+  {
+    addNewScan(transformed_scan_ptr_);
+    added_scan_num_++;
+    added_pose_.x = current_pose.x;
+    added_pose_.y = current_pose.y;
+    added_pose_.z = current_pose.z;
+    added_pose_.roll = current_pose.roll;
+    added_pose_.pitch = current_pose.pitch;
+    added_pose_.yaw = current_pose.yaw;
+    is_map_updated_ = true;
+  }
+
+  // Update <previous> values
+  previous_pose_.x = current_pose.x;
+  previous_pose_.y = current_pose.y;
+  previous_pose_.z = current_pose.z;
+  previous_pose_.roll = current_pose.roll;
+  previous_pose_.pitch = current_pose.pitch;
+  previous_pose_.yaw = current_pose.yaw;
+
+  previous_velocity_.x = ndt_velocity.x;
+  previous_velocity_.y = ndt_velocity.y;
+  previous_velocity_.z = ndt_velocity.z;
+  previous_velocity_.roll = ndt_velocity.roll;
+  previous_velocity_.pitch = ndt_velocity.pitch;
+  previous_velocity_.yaw = ndt_velocity.yaw;
+
+  previous_accel_.x = ndt_acceleration.x;
+  previous_accel_.y = ndt_acceleration.y;
+  previous_accel_.z = ndt_acceleration.z;
+  previous_accel_.roll = ndt_acceleration.roll;
+  previous_accel_.pitch = ndt_acceleration.pitch;
+  previous_accel_.yaw = ndt_acceleration.yaw;
+
+  previous_scan_time_.sec = current_scan_time.sec;
+  previous_scan_time_.nsec = current_scan_time.nsec;
+
+  // Finally, update local_map_
+  updateLocalMap(current_pose);
 }
 
 #endif // NDT_CORRECTED_LIDAR_MAPPING_H_
