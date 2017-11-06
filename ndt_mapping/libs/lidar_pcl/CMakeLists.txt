@@ -18,19 +18,23 @@ catkin_package(
 
 set(srcs
   src/lidar_pcl.cpp
+  src/ndt_corrected_lidar_mapping.cpp
 )
 
 set(incs 
-  "include/lidar_pcl/lidar_pcl.h"
+  "include/${SUBSYS_NAME}/lidar_pcl.h"
+  "include/${SUBSYS_NAME}/struct_types.h"
+  "include/${SUBSYS_NAME}/ndt_corrected_lidar_mapping.h"
 )
 
-# set(impl_incs 
-#   "include/impl/lidar_pcl.hpp"
-# )
+set(impl_incs 
+  "include/${SUBSYS_NAME}/impl/ndt_corrected_lidar_mapping.hpp"
+)
 
 include_directories(${PCL_INCLUDE_DIRS} "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
-# add_library("${LIB_NAME}" ${srcs} ${incs} ${impl_incs})
-add_library("${LIB_NAME}" ${srcs} ${incs})
+SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -Wall")
+
+add_library("${LIB_NAME}" ${srcs} ${incs} ${impl_incs})
 
 target_link_libraries("${LIB_NAME}" ${PCL_LIBRRIES})

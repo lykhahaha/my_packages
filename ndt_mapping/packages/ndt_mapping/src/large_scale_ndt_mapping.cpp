@@ -88,6 +88,7 @@
 #endif
 
 #include <lidar_pcl/lidar_pcl.h>
+#include <lidar_pcl/struct_types.h>
 
 // Here are the functions I wrote. De-comment to use
 #define TILE_WIDTH 35 // Maximum range of LIDAR 32E is 70m
@@ -98,51 +99,6 @@ static int add_scan_number = 1; // added frame count
 std::ofstream csv_stream;
 std::string csv_filename = "map_pose.csv";
 #endif // MY_EXTRACT_SCANPOSE
-
-struct pose
-{
-  double x;
-  double y;
-  double z;
-  double roll;
-  double pitch;
-  double yaw;
-};
-
-struct velocity
-{
-  double x;
-  double y;
-  double z;
-};
-
-struct Key
-{
-  int x;
-  int y;
-};
-
-bool operator==(const Key& lhs, const Key& rhs)
-{
-  return lhs.x == rhs.x && lhs.y == rhs.y;
-}
-
-bool operator!=(const Key& lhs, const Key& rhs)
-{
-  return lhs.x != rhs.x || lhs.y != rhs.y;
-}
-
-namespace std
-{
-  template <>
-  struct hash<Key> // custom hashing function for Key<(x,y)>
-  {
-    std::size_t operator()(const Key& k) const
-    {
-      return hash<int>()(k.x) ^ (hash<int>()(k.y) << 1);
-    }
-  };
-}
 
 // global variables
 static pose previous_pose, guess_pose, current_pose, ndt_pose, added_pose, localizer_pose;
@@ -303,7 +259,6 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   }
 
   correctLIDARscan(scan, current_velocity, secs);
-
   pcl::PointCloud<pcl::PointXYZI>::Ptr scan_ptr(new pcl::PointCloud<pcl::PointXYZI>(scan));
 
   // Add initial point cloud to velodyne_map
@@ -334,14 +289,11 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   
   ndt.setInputSource(filtered_scan_ptr);
 
-  std::chrono::time_point<std::chrono::system_clock> t1 = std::chrono::system_clock::now();
   if (isMapUpdate == true)
   {
     ndt.setInputTarget(local_map_ptr);
     isMapUpdate = false;
   }
-  std::chrono::time_point<std::chrono::system_clock> t2 = std::chrono::system_clock::now();
-  double ndt_update_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
 
   guess_pose.x = previous_pose.x + diff_x;
   guess_pose.y = previous_pose.y + diff_y;
@@ -361,7 +313,6 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
 
   pcl::PointCloud<pcl::PointXYZI>::Ptr output_cloud(new pcl::PointCloud<pcl::PointXYZI>);
 
-  t1 = std::chrono::system_clock::now();
 #ifdef USE_FAST_PCL
   ndt.omp_align(*output_cloud, init_guess);
   fitness_score = ndt.getFitnessScore();
@@ -369,8 +320,6 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   ndt.align(*output_cloud, init_guess);
   fitness_score = ndt.getFitnessScore();
 #endif
-  t2 = std::chrono::system_clock::now();
-  double ndt_align_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
 
   // fitness_score = ndt.getFitnessScore();
 
@@ -423,7 +372,6 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   
   // Calculate the shift between added_pos and current_pos
   double shift = sqrt(pow(current_pose.x - added_pose.x, 2.0) + pow(current_pose.y - added_pose.y, 2.0));
-  t1 = std::chrono::system_clock::now();
   if(shift >= min_add_scan_shift || diff_yaw >= min_add_scan_yaw_diff)
   {
 #ifdef MY_EXTRACT_SCANPOSE
@@ -458,8 +406,6 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
 #endif // MY_EXTRACT_SCANPOSE
 
   pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, t_localizer);
-  t2 = std::chrono::system_clock::now();
-  double ndt_keyscan_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
 
   // The rest of the code
   transform.setOrigin(tf::Vector3(current_pose.x, current_pose.y, current_pose.z));
@@ -513,9 +459,6 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   // std::cout << t_localizer << "\n";
   std::cout << "Shift: " << shift << "\n";
   std::cout << "Yaw Diff: " << diff_yaw << "\n";
-  std::cout << "Update target map took: " << ndt_update_time << "ms.\n";
-  std::cout << "NDT matching took: " << ndt_align_time << "ms.\n";
-  std::cout << "Updating map took: " << ndt_keyscan_time << "ms.\n";
   std::cout << "-----------------------------------------------------------------" << std::endl;
 }
 
