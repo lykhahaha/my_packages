@@ -15,15 +15,7 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::NDTCorrectedLidarMapping()
   , added_scan_num_(0)
   , initial_scan_loaded_(false)
   , is_map_updated_(false)
-  , ndt_pose_({0., 0., 0., 0., 0., 0.})
-  , current_pose_({0., 0., 0., 0., 0., 0.})
-  , previous_pose_({0., 0., 0., 0., 0., 0.})
-  , added_pose_({0., 0., 0., 0., 0., 0.})
-  , previous_velocity_({0., 0., 0., 0., 0., 0.})
-  , previous_accel_({0., 0., 0., 0., 0., 0.})
 {
-  local_map_.header.frame_id = "map";
-  transformed_scan_ptr_->header.frame_id = "map";
   ndt_.setTransformationEpsilon(0.001);
   ndt_.setStepSize(0.05);
   ndt_.setResolution(2.5);
@@ -51,6 +43,20 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::setTFCalibration(double tf_x,
   Eigen::AngleAxisf rot_y_ltob((-1.0) * tf_pitch, Eigen::Vector3f::UnitY());
   Eigen::AngleAxisf rot_z_ltob((-1.0) * tf_yaw, Eigen::Vector3f::UnitZ());
   tf_ltob_ = (tl_ltob * rot_z_ltob * rot_y_ltob * rot_x_ltob).matrix();
+
+  ndt_pose_.x = tf_x;
+  ndt_pose_.y = tf_y;
+  ndt_pose_.z = tf_z;
+  ndt_pose_.roll = tf_roll;
+  ndt_pose_.pitch = tf_pitch;
+  ndt_pose_.yaw = tf_yaw;
+
+  lidar_previous_pose_.x = tf_x;
+  lidar_previous_pose_.y = tf_y;
+  lidar_previous_pose_.z = tf_z;
+  lidar_previous_pose_.roll = tf_roll;
+  lidar_previous_pose_.pitch = tf_pitch;
+  lidar_previous_pose_.yaw = tf_yaw;
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -105,9 +111,9 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::estimateCurrentVelocity(Vel velocit
   estimated_velocity.x = velocity.x + acceleration.x * interval;
   estimated_velocity.y = velocity.y + acceleration.y * interval;
   estimated_velocity.z = velocity.z + acceleration.z * interval;
-  estimated_velocity.roll = velocity.roll + acceleration.roll * interval;
+  estimated_velocity.roll  = velocity.roll + acceleration.roll * interval;
   estimated_velocity.pitch = velocity.pitch + acceleration.pitch * interval;
-  estimated_velocity.yaw = velocity.yaw + acceleration.yaw * interval;
+  estimated_velocity.yaw   = velocity.yaw + acceleration.yaw * interval;
   return estimated_velocity;
 }
 
@@ -115,16 +121,16 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::estimateCurrentVelocity(Vel velocit
 template <typename PointT> Pose
 lidar_pcl::NDTCorrectedLidarMapping<PointT>::estimateCurrentPose(Pose pose, 
                                                                  Vel velocity, 
-                                                                 Accel acceleration, 
+                                                                 // Accel acceleration, 
                                                                  double interval)
 {
   Pose estimated_pose;
-  estimated_pose.x = pose.x + velocity.x * interval + 0.5 * acceleration.x * interval * interval;
-  estimated_pose.y = pose.y + velocity.y * interval + 0.5 * acceleration.y * interval * interval;
-  estimated_pose.z = pose.z + velocity.z * interval + 0.5 * acceleration.z * interval * interval;
-  estimated_pose.roll = pose.roll + velocity.roll * interval + 0.5 * acceleration.roll * interval * interval;
-  estimated_pose.pitch = pose.pitch + velocity.pitch * interval + 0.5 * acceleration.pitch * interval * interval;
-  estimated_pose.yaw = pose.yaw + velocity.yaw * interval + 0.5 * acceleration.yaw * interval * interval;
+  estimated_pose.x = pose.x + velocity.x * interval; // + 0.5 * acceleration.x * interval * interval;
+  estimated_pose.y = pose.y + velocity.y * interval; // + 0.5 * acceleration.y * interval * interval;
+  estimated_pose.z = pose.z + velocity.z * interval; // + 0.5 * acceleration.z * interval * interval;
+  estimated_pose.roll  = pose.roll + velocity.roll * interval; // + 0.5 * acceleration.roll * interval * interval;
+  estimated_pose.pitch = pose.pitch + velocity.pitch * interval; // + 0.5 * acceleration.pitch * interval * interval;
+  estimated_pose.yaw   = pose.yaw + velocity.yaw * interval; // + 0.5 * acceleration.yaw * interval * interval;
   return estimated_pose;
 }
 
@@ -137,13 +143,14 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::getInitNDTPose(Pose estimated_pose)
   Eigen::AngleAxisf init_rotation_z(estimated_pose.yaw, Eigen::Vector3f::UnitZ());
   Eigen::Translation3f init_translation(estimated_pose.x, estimated_pose.y, estimated_pose.z);
   return (init_translation * init_rotation_z * init_rotation_y * init_rotation_x).matrix() * tf_btol_;
+  // return (init_translation * init_rotation_z * init_rotation_y * init_rotation_x).matrix();
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT> void
 lidar_pcl::NDTCorrectedLidarMapping<PointT>::correctLidarScan(pcl::PointCloud<PointT>& scan, 
                                                               Vel velocity,
-                                                              Accel acceleration,
+                                                              // Accel acceleration,
                                                               double interval)
 {
   // Correct LIDAR scan due to car's linear and angular motion
@@ -167,16 +174,16 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::correctLidarScan(pcl::PointCloud<Po
   }
 
   scan.clear();
-  Pose current_lidar_pose = {0., 0., 0., 0., 0., 0.};
+  Pose current_lidar_pose; // = {0., 0., 0., 0., 0., 0.};
   for(int i = 0, npackets = scan_packets_vector.size(); i < npackets; i++)
   {
     double offset_time = interval * i / npackets;
-    Pose this_packet_lidar_pose = {current_lidar_pose.x - velocity.x * offset_time - 0.5 * acceleration.x * interval * interval,
-                                   current_lidar_pose.y - velocity.y * offset_time - 0.5 * acceleration.y * interval * interval,
-                                   current_lidar_pose.z - velocity.z * offset_time - 0.5 * acceleration.z * interval * interval,
-                                   current_lidar_pose.roll  - velocity.roll  * offset_time - 0.5 * acceleration.roll  * interval * interval,
-                                   current_lidar_pose.pitch - velocity.pitch * offset_time - 0.5 * acceleration.pitch * interval * interval,
-                                   current_lidar_pose.yaw   - velocity.yaw   * offset_time - 0.5 * acceleration.yaw   * interval * interval}; 
+    Pose this_packet_lidar_pose(current_lidar_pose.x - velocity.x * offset_time, // - 0.5 * acceleration.x * interval * interval,
+                                current_lidar_pose.y - velocity.y * offset_time, // - 0.5 * acceleration.y * interval * interval,
+                                current_lidar_pose.z - velocity.z * offset_time, // - 0.5 * acceleration.z * interval * interval,
+                                current_lidar_pose.roll  - velocity.roll  * offset_time, // - 0.5 * acceleration.roll  * interval * interval,
+                                current_lidar_pose.pitch - velocity.pitch * offset_time, // - 0.5 * acceleration.pitch * interval * interval,
+                                current_lidar_pose.yaw   - velocity.yaw   * offset_time); // - 0.5 * acceleration.yaw   * interval * interval}; 
 
     Eigen::Affine3f transform = pcl::getTransformation(this_packet_lidar_pose.x, 
                                                        this_packet_lidar_pose.y, 
@@ -184,29 +191,10 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::correctLidarScan(pcl::PointCloud<Po
                                                        this_packet_lidar_pose.roll, 
                                                        this_packet_lidar_pose.pitch, 
                                                        this_packet_lidar_pose.yaw);
+    // Eigen::Affine3f transform = pcl::getTransformation(0, 0, 0, 0, 0, 0);
     pcl::PointCloud<PointT> corrected_packet;
     pcl::transformPointCloud(scan_packets_vector[npackets-1-i], corrected_packet, transform);
     scan += corrected_packet;
-  }
-}
-
-//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-template <typename PointT> bool
-lidar_pcl::NDTCorrectedLidarMapping<PointT>::correctedScanNDTConvergence(Vel& estimated_velocity, 
-                                                                         const Vel& ndt_velocity, 
-                                                                         const double interval)
-{
-  if(  (estimated_velocity.x - ndt_velocity.x) * interval < CORRECTED_NDT_DISTANCE_THRESHOLD_
-    && (estimated_velocity.y - ndt_velocity.y) * interval < CORRECTED_NDT_DISTANCE_THRESHOLD_
-    && (estimated_velocity.z - ndt_velocity.z) * interval < CORRECTED_NDT_DISTANCE_THRESHOLD_
-    && (estimated_velocity.roll  - ndt_velocity.roll)  * interval < CORRECTED_NDT_ANGLE_THRESHOLD_
-    && (estimated_velocity.pitch - ndt_velocity.pitch) * interval < CORRECTED_NDT_ANGLE_THRESHOLD_
-    && (estimated_velocity.yaw   - ndt_velocity.yaw)   * interval < CORRECTED_NDT_ANGLE_THRESHOLD_)
-    return true;
-  else
-  {
-    estimated_velocity = ndt_velocity;
-    return false;
   }
 }
 
@@ -224,6 +212,7 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
     pcl::transformPointCloud(*new_scan_ptr, *transformed_scan_ptr_, tf_btol_);
     addNewScan(transformed_scan_ptr_);
     initial_scan_loaded_ = true;
+    is_map_updated_ = true;
     added_scan_num_++;
     return;
   }
@@ -241,21 +230,37 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
     is_map_updated_ = false;
   }
 
+  // std::cout << "-----------------------------------------------------------------\n";
+  // std::cout << "Prev pose: " << previous_pose_ << std::endl;
+  // std::cout << "Prev vel: " << lidar_previous_velocity_ << std::endl;
+  // std::cout << "Prev accel: " << lidar_previous_accel_ << std::endl;
   // Guess initial pose for NDT iterative calc, assuming <acceleration = const> throughout
   double scan_interval = getScanInterval(current_scan_time, previous_scan_time_);
-  Vel estimated_velocity = estimateCurrentVelocity(previous_velocity_, previous_accel_, scan_interval);
-  Pose estimated_pose = estimateCurrentPose(previous_pose_, previous_velocity_, previous_accel_, scan_interval);
+  Vel lidar_estimated_velocity = lidar_previous_velocity_; // estimateCurrentVelocity(lidar_previous_velocity_, lidar_previous_accel_, scan_interval);
+  Pose vehicle_estimated_pose(previous_pose_.x + pose_diff_.x,
+                              previous_pose_.y + pose_diff_.y,
+                              previous_pose_.z + pose_diff_.z,
+                              previous_pose_.roll + pose_diff_.roll,
+                              previous_pose_.pitch + pose_diff_.pitch,
+                              previous_pose_.yaw + pose_diff_.yaw);
+
+  // std::cout << "Velocity: " << lidar_estimated_velocity << std::endl;
+  // std::cout << "Pose: " << lidar_estimated_pose << std::endl;
 
   Eigen::Matrix4f t_localizer(Eigen::Matrix4f::Identity());
   Vel ndt_velocity;
-  Accel ndt_acceleration;
+  // Accel ndt_acceleration;
   unsigned int iter_num = 0;
-  do
+  while(iter_num < CORRECTED_NDT_ITERATION_THRESHOLD_)
   {
+    std::cout << "-----------------------------------------------------------------\n";
     iter_num++;
-    correctLidarScan(*filtered_scan_ptr, estimated_velocity, previous_accel_, scan_interval);
+    // std::cout << "Matching: " << iter_num << std::endl;
+    // std::cout << "Initial guess: " << lidar_estimated_pose << std::endl;
+    // std::cout << "Initial Vel: " << lidar_estimated_velocity << std::endl;
+    correctLidarScan(*filtered_scan_ptr, lidar_estimated_velocity, scan_interval);
     ndt_.setInputSource(filtered_scan_ptr);
-    Eigen::Matrix4f init_guess = getInitNDTPose(estimated_pose);
+    Eigen::Matrix4f init_guess = getInitNDTPose(vehicle_estimated_pose);
     PointCloudPtr output_cloud(new pcl::PointCloud<PointT>);
 
     #ifdef USE_FAST_PCL
@@ -278,23 +283,40 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
     ndt_pose_.y = t_localizer(1, 3);
     ndt_pose_.z = t_localizer(2, 3);
     mat_l.getRPY(ndt_pose_.roll, ndt_pose_.pitch, ndt_pose_.yaw, 1);
+    // std::cout << "Result: " << ndt_pose_ << std::endl;
 
-    // Re-update current vel/accel with the newly achieved pose
-    ndt_acceleration.x = 2.0 * (ndt_pose_.x - previous_pose_.x - previous_velocity_.x * scan_interval) / (scan_interval * scan_interval);
-    ndt_acceleration.y = 2.0 * (ndt_pose_.y - previous_pose_.y - previous_velocity_.y * scan_interval) / (scan_interval * scan_interval);
-    ndt_acceleration.z = 2.0 * (ndt_pose_.z - previous_pose_.z - previous_velocity_.z * scan_interval) / (scan_interval * scan_interval);
-    ndt_acceleration.roll = 2.0 * (ndt_pose_.roll - previous_pose_.roll - previous_velocity_.roll * scan_interval) / (scan_interval * scan_interval);
-    ndt_acceleration.pitch = 2.0 * (ndt_pose_.pitch - previous_pose_.pitch - previous_velocity_.pitch * scan_interval) / (scan_interval * scan_interval);
-    ndt_acceleration.yaw = 2.0 * (ndt_pose_.yaw - previous_pose_.yaw - previous_velocity_.yaw * scan_interval) / (scan_interval * scan_interval);
+    // Re-update current ndt vel/accel with the newly achieved pose
+    // ndt_acceleration.x     = 0; //2.0 * (ndt_pose_.x - lidar_previous_pose_.x - lidar_previous_velocity_.x * scan_interval) / (scan_interval * scan_interval);
+    // ndt_acceleration.y     = 0; //2.0 * (ndt_pose_.y - lidar_previous_pose_.y - lidar_previous_velocity_.y * scan_interval) / (scan_interval * scan_interval);
+    // ndt_acceleration.z     = 0; //.0 * (ndt_pose_.z - lidar_previous_pose_.z - lidar_previous_velocity_.z * scan_interval) / (scan_interval * scan_interval);
+    // ndt_acceleration.roll  = 0; //2.0 * (ndt_pose_.roll - lidar_previous_pose_.roll - lidar_previous_velocity_.roll * scan_interval) / (scan_interval * scan_interval);
+    // ndt_acceleration.pitch = 0; //2.0 * (ndt_pose_.pitch - lidar_previous_pose_.pitch - lidar_previous_velocity_.pitch * scan_interval) / (scan_interval * scan_interval);
+    // ndt_acceleration.yaw   = 0; //2.0 * (ndt_pose_.yaw - lidar_previous_pose_.yaw - lidar_previous_velocity_.yaw * scan_interval) / (scan_interval * scan_interval);
 
-    ndt_velocity.x = 2.0 * (ndt_pose_.x - previous_pose_.x) / scan_interval - previous_velocity_.x;
-    ndt_velocity.y = 2.0 * (ndt_pose_.y - previous_pose_.y) / scan_interval - previous_velocity_.y;
-    ndt_velocity.z = 2.0 * (ndt_pose_.z - previous_pose_.z) / scan_interval - previous_velocity_.z;
-    ndt_velocity.roll = 2.0 * (ndt_pose_.roll - previous_pose_.roll) / scan_interval - previous_velocity_.roll;
-    ndt_velocity.pitch = 2.0 * (ndt_pose_.pitch - previous_pose_.pitch) / scan_interval - previous_velocity_.pitch;
-    ndt_velocity.yaw = 2.0 * (ndt_pose_.yaw - previous_pose_.yaw) / scan_interval - previous_velocity_.yaw;
+    ndt_velocity.x     = (ndt_pose_.x - lidar_previous_pose_.x) / scan_interval; // 2.0 * (ndt_pose_.x - lidar_previous_pose_.x) / scan_interval - lidar_previous_velocity_.x;
+    ndt_velocity.y     = (ndt_pose_.y - lidar_previous_pose_.y) / scan_interval; //2.0 * (ndt_pose_.y - lidar_previous_pose_.y) / scan_interval - lidar_previous_velocity_.y;
+    ndt_velocity.z     = (ndt_pose_.z - lidar_previous_pose_.z) / scan_interval; //2.0 * (ndt_pose_.z - lidar_previous_pose_.z) / scan_interval - lidar_previous_velocity_.z;
+    ndt_velocity.roll  = (ndt_pose_.roll - lidar_previous_pose_.roll) / scan_interval; //2.0 * (ndt_pose_.roll - lidar_previous_pose_.roll) / scan_interval - lidar_previous_velocity_.roll;
+    ndt_velocity.pitch = (ndt_pose_.pitch - lidar_previous_pose_.pitch) / scan_interval; //2.0 * (ndt_pose_.pitch - lidar_previous_pose_.pitch) / scan_interval - lidar_previous_velocity_.pitch;
+    ndt_velocity.yaw   = (ndt_pose_.yaw - lidar_previous_pose_.yaw) / scan_interval; //2.0 * (ndt_pose_.yaw - lidar_previous_pose_.yaw) / scan_interval - lidar_previous_velocity_.yaw;
+    // std::cout << "Updated vel: " << ndt_velocity << std::endl;
+    // std::cout << "Updated accel: " << ndt_acceleration << std::endl;
+
+    if(  std::fabs(ndt_velocity.x - lidar_estimated_velocity.x) * scan_interval < CORRECTED_NDT_DISTANCE_THRESHOLD_
+      && std::fabs(ndt_velocity.y - lidar_estimated_velocity.y) * scan_interval < CORRECTED_NDT_DISTANCE_THRESHOLD_
+      && std::fabs(ndt_velocity.z - lidar_estimated_velocity.z) * scan_interval < CORRECTED_NDT_DISTANCE_THRESHOLD_
+      && std::fabs(ndt_velocity.roll  - lidar_estimated_velocity.roll)  * scan_interval < CORRECTED_NDT_ANGLE_THRESHOLD_
+      && std::fabs(ndt_velocity.pitch - lidar_estimated_velocity.pitch) * scan_interval < CORRECTED_NDT_ANGLE_THRESHOLD_
+      && std::fabs(ndt_velocity.yaw   - lidar_estimated_velocity.yaw)   * scan_interval < CORRECTED_NDT_ANGLE_THRESHOLD_)
+    {
+      break;
+    }
+    else
+    {
+      // lidar_estimated_pose = ndt_pose_;
+      lidar_estimated_velocity = ndt_velocity;
+    }
   }
-  while(iter_num <= CORRECTED_NDT_ITERATION_THRESHOLD_ && !correctedScanNDTConvergence(estimated_velocity, ndt_velocity, scan_interval));
 
   #ifdef USE_FAST_PCL
   fitness_score_ = ndt_.omp_getFitnessScore();
@@ -337,6 +359,20 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
     is_map_updated_ = true;
   }
 
+  // Update pose_diff_
+  // pose_diff_.x = ndt_pose_.x - lidar_previous_pose_.x;
+  // pose_diff_.y = ndt_pose_.y - lidar_previous_pose_.y;
+  // pose_diff_.z = ndt_pose_.z - lidar_previous_pose_.z;
+  // pose_diff_.roll = ndt_pose_.roll - lidar_previous_pose_.roll;
+  // pose_diff_.pitch = ndt_pose_.pitch - lidar_previous_pose_.pitch;
+  // pose_diff_.yaw = ndt_pose_.yaw - lidar_previous_pose_.yaw;
+  pose_diff_.x = current_pose_.x - previous_pose_.x;
+  pose_diff_.y = current_pose_.y - previous_pose_.y;
+  pose_diff_.z = current_pose_.z - previous_pose_.z;
+  pose_diff_.roll = current_pose_.roll - previous_pose_.roll;
+  pose_diff_.pitch = current_pose_.pitch - previous_pose_.pitch;
+  pose_diff_.yaw = current_pose_.yaw - previous_pose_.yaw;
+
   // Update <previous> values
   previous_pose_.x = current_pose_.x;
   previous_pose_.y = current_pose_.y;
@@ -345,19 +381,19 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
   previous_pose_.pitch = current_pose_.pitch;
   previous_pose_.yaw = current_pose_.yaw;
 
-  previous_velocity_.x = ndt_velocity.x;
-  previous_velocity_.y = ndt_velocity.y;
-  previous_velocity_.z = ndt_velocity.z;
-  previous_velocity_.roll = ndt_velocity.roll;
-  previous_velocity_.pitch = ndt_velocity.pitch;
-  previous_velocity_.yaw = ndt_velocity.yaw;
+  lidar_previous_pose_.x = ndt_pose_.x;
+  lidar_previous_pose_.y = ndt_pose_.y;
+  lidar_previous_pose_.z = ndt_pose_.z;
+  lidar_previous_pose_.roll = ndt_pose_.roll;
+  lidar_previous_pose_.pitch = ndt_pose_.pitch;
+  lidar_previous_pose_.yaw = ndt_pose_.yaw;
 
-  previous_accel_.x = ndt_acceleration.x;
-  previous_accel_.y = ndt_acceleration.y;
-  previous_accel_.z = ndt_acceleration.z;
-  previous_accel_.roll = ndt_acceleration.roll;
-  previous_accel_.pitch = ndt_acceleration.pitch;
-  previous_accel_.yaw = ndt_acceleration.yaw;
+  lidar_previous_velocity_.x = ndt_velocity.x;
+  lidar_previous_velocity_.y = ndt_velocity.y;
+  lidar_previous_velocity_.z = ndt_velocity.z;
+  lidar_previous_velocity_.roll = ndt_velocity.roll;
+  lidar_previous_velocity_.pitch = ndt_velocity.pitch;
+  lidar_previous_velocity_.yaw = ndt_velocity.yaw;
 
   previous_scan_time_.sec = current_scan_time.sec;
   previous_scan_time_.nsec = current_scan_time.nsec;

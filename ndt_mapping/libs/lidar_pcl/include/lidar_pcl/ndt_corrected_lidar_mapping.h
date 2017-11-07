@@ -4,7 +4,7 @@
 // // Basic libs
 // #include <chrono>
 // #include <fstream>
-// #include <iostream>
+#include <iostream>
 // #include <mutex>
 // #include <omp.h>
 // #include <sstream>
@@ -81,12 +81,14 @@ namespace lidar_pcl
 
     Eigen::Matrix4f tf_btol_, tf_ltob_;
     Pose ndt_pose_, current_pose_, previous_pose_, added_pose_;
-    Vel previous_velocity_;
-    Accel previous_accel_;
+    Pose pose_diff_;
+    Pose lidar_previous_pose_;
+    Vel lidar_previous_velocity_;
+    // Accel lidar_previous_accel_;
     ros::Time previous_scan_time_;
     const double CORRECTED_NDT_DISTANCE_THRESHOLD_ = 0.3; // 0.3m
     const double CORRECTED_NDT_ANGLE_THRESHOLD_ = 0.1745329; // approx 10 degree
-    const unsigned int CORRECTED_NDT_ITERATION_THRESHOLD_ = 50;
+    const unsigned int CORRECTED_NDT_ITERATION_THRESHOLD_ = 1;
 
   public:
     NDTCorrectedLidarMapping();
@@ -94,11 +96,10 @@ namespace lidar_pcl
     void addNewScan(const PointCloudPtr new_scan);
     void updateLocalMap(Pose current_pose);
     Vel estimateCurrentVelocity(Vel velocity, Accel acceleration, double interval);
-    Pose estimateCurrentPose(Pose pose, Vel velocity, Accel acceleration, double interval);
+    Pose estimateCurrentPose(Pose pose, Vel velocity, double interval);
     Eigen::Matrix4f getInitNDTPose(Pose pose);
-    void correctLidarScan(pcl::PointCloud<PointT>& scan, Vel velocity, Accel acceleration, double interval);
+    void correctLidarScan(pcl::PointCloud<PointT>& scan, Vel velocity, double interval);
     void doNDTMapping(const pcl::PointCloud<PointT> new_scan, const ros::Time current_scan_time);
-    bool correctedScanNDTConvergence(Vel& estimated_velocity, const Vel& ndt_velocity, const double interval);
 
     void setTFCalibration(double tf_x, double tf_y, double tf_z, 
                           double tf_roll, double tf_pitch, double tf_yaw);
@@ -133,6 +134,11 @@ namespace lidar_pcl
       min_add_scan_yaw_diff_ = min_add_scan_yaw_diff;
     }
 
+    inline void setVoxelLeafSize(double voxel_leaf_size)
+    {
+      voxel_grid_filter_.setLeafSize(voxel_leaf_size, voxel_leaf_size, voxel_leaf_size);
+    }
+
     inline Pose ndtPose()
     {
       return ndt_pose_;
@@ -155,6 +161,7 @@ namespace lidar_pcl
 
     inline pcl::PointCloud<PointT> localMap()
     {
+      local_map_.header.frame_id = "map";
       return local_map_;
     }
 
@@ -165,6 +172,7 @@ namespace lidar_pcl
 
     inline pcl::PointCloud<PointT> transformedScan()
     {
+      transformed_scan_ptr_->header.frame_id = "map";
       return *transformed_scan_ptr_;
     }
 
