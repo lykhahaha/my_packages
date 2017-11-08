@@ -287,13 +287,13 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
     pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, tf_btol);
     add_new_scan(*transformed_scan_ptr);
     initial_scan_loaded = 1;
+    add_scan_number++;
 #ifdef MY_EXTRACT_SCANPOSE
     // outputing into csv
     csv_stream << add_scan_number << "," << input->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
                << _tf_x << "," << _tf_y << "," << _tf_z << "," 
                << _tf_roll << "," << _tf_pitch << "," << _tf_yaw
                << std::endl;
-    add_scan_number++;
     return;
 #endif // MY_EXTRACT_SCANPOSE
   }
