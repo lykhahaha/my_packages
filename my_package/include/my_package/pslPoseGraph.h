@@ -70,6 +70,7 @@ struct Pose3d {
 typedef struct Pose3d Pose3d;
 
 typedef vector<Pose3d, Eigen::aligned_allocator<Pose3d>> VectorofPoses;
+typedef vector<Eigen::Vector3d, Eigen::aligned_allocator<Eigen::Vector3d>> VectorofNormalVectors;
 
 // The constraint between two vertices in the pose graph. The constraint is the
 // transformation from vertex id_begin to vertex id_end.
@@ -165,7 +166,9 @@ class PoseGraph3dErrorTerm {
   const Eigen::Matrix<double, 6, 6> sqrt_information_;
 };
 
-void optimizeEssentialGraph(const VectorofPoses &NonCorrectedSim3, Pose3d endCorrectedPose,
-							VectorofPoses &CorrectedSim3);
+void optimizeEssentialGraph(const VectorofPoses &NonCorrectedSim3, 
+                            const VectorofNormalVectors &GroundNormalVector3,
+                            Pose3d endCorrectedPose,
+							              VectorofPoses &CorrectedSim3);
 
 #endif

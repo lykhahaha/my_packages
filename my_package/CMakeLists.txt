@@ -205,6 +205,10 @@ add_executable(import_to_bag src/import_to_bag.cpp)
 add_dependencies(import_to_bag ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg autoware_msgs_generate_messages_cpp)
 target_link_libraries(import_to_bag ${catkin_LIBRARIES})
 
+add_executable(import_to_bag_nostamp src/import_to_bag_nostamp.cpp)
+add_dependencies(import_to_bag_nostamp ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg autoware_msgs_generate_messages_cpp)
+target_link_libraries(import_to_bag_nostamp ${catkin_LIBRARIES})
+
 add_executable(scan_preprocessing src/scan_preprocessing.cpp)
 add_dependencies(scan_preprocessing ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg autoware_msgs_generate_messages_cpp)
 target_link_libraries(scan_preprocessing ${catkin_LIBRARIES})
@@ -220,3 +224,7 @@ target_link_libraries(pcd_merger ${catkin_LIBRARIES})
 add_executable(road_surface src/road_surface.cpp)
 add_dependencies(road_surface ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg autoware_msgs_generate_messages_cpp)
 target_link_libraries(road_surface ${catkin_LIBRARIES})
+
+add_executable(pose_optimization_with_normals_regularization src/pose_optimization_with_normals_regularization.cpp)
+add_dependencies(pose_optimization_with_normals_regularization ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg)
+target_link_libraries(pose_optimization_with_normals_regularization ${catkin_LIBRARIES} ${CERES_LIBRARIES} glog ${GFLAGS_LIBRARIES})

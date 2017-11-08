@@ -43,7 +43,7 @@
 
 #include <Eigen/Dense>
 
-#define READ_PCD
+// #define READ_PCD
 
 bool findRoadSurfaceNormalVector(const pcl::PointCloud<pcl::PointXYZI> cloud,
                                 pcl::PointCloud<pcl::PointXYZI>& plane_cloud,
@@ -199,15 +199,20 @@ int main(int argc, char** argv)
   cloud_msg_ptr->header.frame_id = "map";
   dst_pub.publish(*cloud_msg_ptr);
 
-#else //read from a bagfile instead
+#else //read from a bagfile instead, also output csv data
   ros::Publisher vec_pub = nh.advertise<visualization_msgs::Marker>("normal_vector", 0);
-  ros::Rate r(5);
+  // ros::Rate r(5); // decrease rate as to view in rviz
   if(argc < 2)
   {
     std::cout << "Please indicate the bag file." << std::endl;
     std::cout << "rosrun my_package road_surface \"bagfile\"" << std::endl;
     return -1;
   }
+
+  std::ofstream out_stream;
+  std::string out_file = "normal_vector.csv";
+  out_stream.open(out_file);
+  out_stream << "sequence,sec,nsec,x,y,z" << std::endl;
 
   std::string bagfile = argv[1];
   std::string bagtopic = "/points_raw";
@@ -245,8 +250,12 @@ int main(int argc, char** argv)
       if(!findRoadSurfaceNormalVector(tmp, dst, normal_vector))
       {
         std::cout << "RANSAC failed!" << std::endl;
-        return -1;
+        continue;
       }
+
+      // Write data to csv
+      out_stream << input_cloud->header.seq << "," << input_cloud->header.stamp.sec << "," << input_cloud->header.stamp.nsec << ","
+                 << normal_vector[0] << "," << normal_vector[1] << "," << normal_vector[2] << std::endl;
 
       // Convert to ROS msgs and publish
       sensor_msgs::PointCloud2::Ptr cloud_msg_ptr(new sensor_msgs::PointCloud2);
@@ -280,7 +289,7 @@ int main(int argc, char** argv)
       marker.color.b = 0.0;
       vec_pub.publish(marker);
 
-      r.sleep();
+      // r.sleep();
     }
   }
 #endif // READ_PCD

@@ -18,7 +18,7 @@ instead of putting the directory as an argument because I have not implement tha
 // #include <pcl_ros/transforms.h>
 #include <pcl_conversions/pcl_conversions.h>
 // #include <Eigen/Geometry>
-// #include "boost/filesystem.hpp"
+#include "boost/filesystem.hpp"
 
 // #include <iostream>
 #include <fstream>
@@ -28,52 +28,28 @@ instead of putting the directory as an argument because I have not implement tha
 int main(int argc, char** argv)
 {
   // Heads-up reminder for usage
-  std::cout << "INFO: Reading data in the txts/ directory." << std::endl;
-  std::cout << "Reading LidarTimestamp.csv file in current directory." << std::endl;
+  std::cout << "INFO: Reading data in the current directory." << std::endl;
   std::cout << "Please ensure that bags/ and pcds/ directory ARE CREATED in this directory." << std::endl;
-  std::cout << "Also ensure that ONLY .txt files with the correct format are in txts/ directory." << std::endl;
+  std::cout << "Also ensure that ONLY .txt files with the correct format are in this directory." << std::endl;
   // Output bag file
   rosbag::Bag bag;
   bag.open("bags/today.bag", rosbag::bagmode::Write);
-
-  // Timestamp data
-  std::ifstream time_stamp_stream;
-  try
-  {
-    time_stamp_stream.open("LidarTimestamp.csv");
-  }
-  catch(std::exception& e)
-  {
-    std::cout << e.what() << std::endl;
-    std::cout << "It seems that LidarTimestamp.csv is not available? Instead, use: \n";
-    std::cout << "\trosrun my_package import_to_bag_nostamp\n";
-    return(-1);
-  }
+  // Some fake data for pointcloud
+  int seq = 1;
+  int32_t sec = 1504851231; // this should be around 8 sep, noon
+  int32_t nsec = 000000001;
   std::string frame_id = "velodyne";
 
-  // count
-  unsigned int file_count = 0;
-  std::string time_stamp_str;
-  while(getline(time_stamp_stream, time_stamp_str))
+  // Get all file in the specified directory
+  for(int file_number = 1, file_end = 1463; file_number <= file_end; file_number++)
   {
-    file_count++;
-  }
-  std::cout << "Expecting: " << file_count << " txt files." << std::endl;
+    std::string filename = "Lidar" + std::to_string(file_number) + ".txt";
 
-  // Processing
-  time_stamp_stream.close();
-  time_stamp_stream.open("LidarTimestamp.csv");
-  unsigned int file_number = 1;
-  unsigned int seq = 0;
-  uint64_t sec, nsec;
-  while(getline(time_stamp_stream, time_stamp_str))
-  {
     std::ifstream in_stream;  
-    std::cout << "Reading: txts/Lidar" << file_number << ".txt" << std::endl;
-    in_stream.open("txts/Lidar" + std::to_string(file_number) + ".txt");
+    in_stream.open(filename);
 
     // Place-holder for variables
-    pcl::PointCloud<pcl::PointXYZI> scan;
+    pcl::PointCloud<pcl::PointXYZI> scan; 
     std::string line, x_str, y_str, z_str, intensity_str;
     int points_skipped = 0;
     while(getline(in_stream, line)) // Loop through lines in file
@@ -82,12 +58,12 @@ int main(int argc, char** argv)
       
       // Get date
       getline(line_stream, x_str, ' ');
-      getline(line_stream, y_str, ' ');
-      getline(line_stream, z_str, ' ');
-      getline(line_stream, intensity_str);
       double x = std::stod(x_str);
+      getline(line_stream, y_str, ' ');
       double y = std::stod(y_str);
+      getline(line_stream, z_str, ' ');
       double z = std::stod(z_str);
+      getline(line_stream, intensity_str);
       double intensity = std::stod(intensity_str);
 
       if(!x && !y && !z && !intensity)
@@ -106,18 +82,10 @@ int main(int argc, char** argv)
       scan.push_back(new_point);
     }
     // Write to pcd file
-    // pcl::io::savePCDFileBinary("pcds/Lidar" + std::to_string(file_number) + ".pcd", scan);
-    std::cout << "Saved [" << scan.size() << " points, " << points_skipped 
-              << " skipped] points to pcds/Lidar" << file_number << ".pcd" << std::endl;
-    // std::cout << "---------------------------------------" << std::endl;
-
-    // Timestamp for msg
-    // Time in microseconds i assume
-    seq++;
-    sec = std::stoull(time_stamp_str.c_str()) / 1000000; // to s
-    nsec = std::stoull(time_stamp_str.c_str()) % 1000000 * 1000; // to us to ns
-    std::cout << "sec: " << sec << "\n";
-    std::cout << "nsec: " << nsec << std::endl;
+    std::string out_filename = filename;
+    pcl::io::savePCDFileBinary("pcds/" + out_filename + ".pcd", scan);
+    std::cout << "Saved [" << scan.size() << " points, " << points_skipped << " skipped] points to pcds/" << out_filename << ".pcd" << std::endl;
+    std::cout << "---------------------------------------" << std::endl;
 
     // Write to bag file
     sensor_msgs::PointCloud2::Ptr scan_msg_ptr(new sensor_msgs::PointCloud2);
@@ -126,12 +94,20 @@ int main(int argc, char** argv)
     scan_msg_ptr->header.stamp.sec = sec;
     scan_msg_ptr->header.stamp.nsec = nsec;
     scan_msg_ptr->header.frame_id = frame_id;
-    bag.write("/points_raw", ros::Time(sec, nsec), *scan_msg_ptr); 
-    file_number++;     
+    bag.write("/velodyne_points", ros::Time(sec, nsec), *scan_msg_ptr);
+
+    // Update fake data before processing next scan
+    seq++;
+    nsec += 100000000; // rate is 10Hz, thus 0.1s = 10E8 ns
+    if(nsec >= 1000000000)
+    {
+      sec++;
+      nsec -= 1000000000;
+    }
   }
 
   bag.close();
-  std::cout << "Finished. Wrote bag file to bags/." << std::endl;
+  std::cout << "Finished. Outputed bag file to bags/." << std::endl;
 
   return 0;
 }

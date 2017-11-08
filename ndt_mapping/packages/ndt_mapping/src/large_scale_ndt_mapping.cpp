@@ -201,6 +201,7 @@ void correctLIDARscan(pcl::PointCloud<pcl::PointXYZI>& scan, Eigen::Affine3d rel
   pose crnt_pose = {0, 0, 0, 0, 0, 0};
   velocity vel;
   pcl::getTranslationAndEulerAngles(relative_tf, vel.x, vel.y, vel.z, vel.roll, vel.pitch, vel.yaw);
+  // std::cout << "SCAN: " << scan_interval << std::endl;
   vel.x = vel.x / scan_interval;
   vel.y = vel.y / scan_interval;
   vel.z = vel.z / scan_interval;
@@ -726,7 +727,7 @@ int main(int argc, char** argv)
   std::cout << "Loading " << _bag_file << std::endl;
   rosbag::Bag bag(_bag_file, rosbag::bagmode::Read);
   std::vector<std::string> reading_topics;
-    reading_topics.push_back(std::string("/points_raw"));
+    reading_topics.push_back(std::string("/velodyne_points"));
   ros::Time rosbag_start_time = ros::TIME_MAX;
   ros::Time rosbag_stop_time = ros::TIME_MIN;
   if(_play_duration <= 0)
