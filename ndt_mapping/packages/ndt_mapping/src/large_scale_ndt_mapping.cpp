@@ -207,9 +207,6 @@ void correctLIDARscan(pcl::PointCloud<pcl::PointXYZI>& scan, Eigen::Affine3d rel
   vel.roll = vel.roll / scan_interval;
   vel.pitch = vel.pitch / scan_interval;
   vel.yaw = vel.yaw / scan_interval;
-  std::cout << "(" << vel.x << "," << vel.y << "," << vel.z << ","
-            << vel.roll << "," << vel.pitch << "," << vel.yaw << ")" << std::endl;
-  // std::cout << "scan interval: " << scan_interval << std::endl;
   for(int i = 0, npackets = scan_packets_vector.size(); i < npackets; i++)
   {
     double offset_time = scan_interval * i / npackets;
@@ -230,7 +227,6 @@ void correctLIDARscan(pcl::PointCloud<pcl::PointXYZI>& scan, Eigen::Affine3d rel
     pcl::transformPointCloud(scan_packets_vector[npackets-1-i], corrected_packet, transform);
     scan += corrected_packet;
   }
-  // std::cout << "SCAN: " << scan.size() << std::endl;
 }
 
 static void add_new_scan(const pcl::PointCloud<pcl::PointXYZI> new_scan)
@@ -301,7 +297,6 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
     return;
 #endif // MY_EXTRACT_SCANPOSE
   }
-  std::cout << scan_ptr->size() << std::endl;
   // Apply voxelgrid filter
   pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_filter;
   voxel_grid_filter.setLeafSize(voxel_leaf_size, voxel_leaf_size, voxel_leaf_size);
