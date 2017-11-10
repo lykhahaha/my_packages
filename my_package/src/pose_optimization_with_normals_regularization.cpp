@@ -1,6 +1,11 @@
 #include <ros/ros.h>
+#include <rosbag/bag.h>
+#include <rosbag/view.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <tf/transform_datatypes.h>
+
+#include <boost/foreach.hpp> // to read bag file
+#define foreach BOOST_FOREACH
 
 #include <pcl/io/pcd_io.h>
 #include <pcl/point_cloud.h>
@@ -8,7 +13,6 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_types.h>
 #include <pcl_ros/transforms.h>
-#include <pcl/filters/voxel_grid.h>
 
 #include <iostream>
 #include <fstream>
@@ -25,26 +29,40 @@ using namespace ros;
 
 #define OUTPUT_POSE // To write x, y, z into a txt file
 
-void optimizeEssentialGraph(const VectorofPoses &NonCorrectedSim3,
-                            const VectorofNormalVectors &GroundNormalVector3,
-                            Pose3d endCorrectedPose,
-                            VectorofPoses &CorrectedSim3)
+bool optimizeEssentialGraphWithL2(const VectorofPoses &NonCorrectedSim3,
+                                  const VectorofNormalVectors &GroundNormalVector3,
+                                  const double regularization_strength,
+                                  Pose3d endCorrectedPose,
+                                  VectorofPoses &CorrectedSim3)
 {
+  if(NonCorrectedSim3.size() != GroundNormalVector3.size())
+  {
+    std::cout << "Error: NonCorrectedSim3.size() != GroundNormalVector3.size()\n(";
+    std::cout << NonCorrectedSim3.size() << " != " << GroundNormalVector3.size() << std::endl;
+    return false;
+  }
+
   VectorofPoses poses;
   poses.resize(NonCorrectedSim3.size());
-  VectorOfConstraints constraints;
   poses.clear();
+  VectorOfConstraints constraints;
   constraints.clear();
+  // VectorofNormalVectors nvecs;
+  // nvecs.resize(NonCorrectedSim3.size());
+  // nvecs.clear();
   
   // Set KeyFrame poses (vertex)
   // We assume the start frame and end frame are the two ends of the loop
-  int endID = NonCorrectedSim3.size()-1;
+  // int endID = NonCorrectedSim3.size()-1;
   
-  for(size_t i=0, iend=NonCorrectedSim3.size(); i<iend;i++)
-    poses[i] = NonCorrectedSim3[i];
+  for(size_t i = 0, iend = NonCorrectedSim3.size(); i < iend; i++)
+  {
+    poses[i] = NonCorrectedSim3[i]; // basically, poses = copy(NonCorrectedSim3)
+    // nvecs[i] = GroundNormalVector3[i]; // same for this nvecs
+  }
 
   // edges (constraint just between two neighboring scans)
-  for(size_t i=0, iend=NonCorrectedSim3.size()-1; i<iend;i++)
+  for(size_t i = 0, iend = NonCorrectedSim3.size() - 1; i < iend; i++)
   {
     const Pose3d Swi = poses[i];
     const Pose3d Swj = poses[i+1];
@@ -57,7 +75,7 @@ void optimizeEssentialGraph(const VectorofPoses &NonCorrectedSim3,
   }
   
   // modify the pose of last keyframe to the corrected one
-  poses[endID] = endCorrectedPose;
+  // poses[endID] = endCorrectedPose;
 
   ceres::LossFunction* loss_function = NULL;
   ceres::LocalParameterization *quaternion_local_parameterization = new ceres::EigenQuaternionParameterization;
@@ -66,15 +84,26 @@ void optimizeEssentialGraph(const VectorofPoses &NonCorrectedSim3,
   for (VectorOfConstraints::const_iterator constraints_iter = constraints.begin(); constraints_iter != constraints.end(); ++constraints_iter) 
   {
     const Constraint3d& constraint = *constraints_iter;
+    // const Constraint3d& constraint = constraints[i];
     const Eigen::Matrix<double, 6, 6> sqrt_information = constraint.information.llt().matrixL();
     // Ceres will take ownership of the pointer.
     ceres::CostFunction* cost_function = PoseGraph3dErrorTerm::Create(constraint.t_be, sqrt_information);
 
+    // Add pose constraints
     problem.AddResidualBlock(cost_function, loss_function,
-                poses[constraint.id_begin].p.data(),
-                poses[constraint.id_begin].q.coeffs().data(),
-                poses[constraint.id_end].p.data(),
-                poses[constraint.id_end].q.coeffs().data());
+                             poses[constraint.id_begin].p.data(),
+                             poses[constraint.id_begin].q.coeffs().data(),
+                             poses[constraint.id_end].p.data(),
+                             poses[constraint.id_end].q.coeffs().data());
+
+    // Add ground surface normal vector constraints
+    ceres::CostFunction* L2_function = 
+                PoseGraph3dL2Term::Create(GroundNormalVector3[constraint.id_begin],
+                                          GroundNormalVector3[constraint.id_end],
+                                          regularization_strength);
+    problem.AddResidualBlock(L2_function, loss_function,
+                             poses[constraint.id_begin].q.coeffs().data(),
+                             poses[constraint.id_end].q.coeffs().data());
 
     problem.SetParameterization(poses[constraint.id_begin].q.coeffs().data(),
                 quaternion_local_parameterization);
@@ -85,14 +114,17 @@ void optimizeEssentialGraph(const VectorofPoses &NonCorrectedSim3,
   // set constant pose for start and end scans
   problem.SetParameterBlockConstant(poses[0].p.data());
   problem.SetParameterBlockConstant(poses[0].q.coeffs().data());
-  problem.SetParameterBlockConstant(poses[endID].p.data());
-  problem.SetParameterBlockConstant(poses[endID].q.coeffs().data());
+  // problem.SetParameterBlockConstant(poses[endID].p.data());
+  // problem.SetParameterBlockConstant(poses[endID].q.coeffs().data());
 
   // optimize
   ceres::Solver::Options options;
-  options.max_num_iterations = 50;  //can try more iterations if not converge
+  options.max_num_iterations = 1000;  //can try more iterations if not converge
   options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
   options.minimizer_progress_to_stdout = true;
+  // options.parameter_tolerance = 1e-15;
+  // options.function_tolerance = 1e-15;
+  // options.min_line_search_step_contraction = 0.99999999999;
 
   ceres::Solver::Summary summary;
   ceres::Solve(options, &problem, &summary);
@@ -101,6 +133,7 @@ void optimizeEssentialGraph(const VectorofPoses &NonCorrectedSim3,
   CorrectedSim3.clear();
   for(size_t i = 0, iend = NonCorrectedSim3.size(); i < iend; i++)
     CorrectedSim3.push_back(poses[i]);
+  return true;
 }
 
 int main(int argc, char** argv)
@@ -108,13 +141,22 @@ int main(int argc, char** argv)
   // Initiate node
   ros::init(argc, argv, "pose_optimization_norm_regu");
 
-  // ros::NodeHandle nh;
-  // ros::Publisher map_pub = nh.advertise<sensor_msgs::PointCloud2>("optimized_graph", 10, true);
+  double L2_strength = 1.0;
+  if(argc >= 2)
+  {
+    L2_strength = std::stod(argv[1]);
+  }
+
+  std::string bagfile = "/home/zwu/LIDAR-DATA/3oct-around-pana1.bag";
+  std::string bagtopic = "/points_raw";
+  std::cout << "Reading bag: " << bagfile << " [topic: " << bagtopic << "]... " << std::flush;
+  rosbag::Bag bag(bagfile, rosbag::bagmode::Read);
+  std::vector<std::string> reading_topics;
+    reading_topics.push_back(std::string(bagtopic));
+  rosbag::View view(bag, rosbag::TopicQuery(reading_topics));
+  std::cout << "Done." << std::endl;
 
   // Do processing
-  // Working dir
-  pcl::PointCloud<pcl::PointXYZI> map; // full map holder
-  map.header.frame_id = "map";
   std::string pose_csv = "map_pose.csv";
   std::string normvec_csv = "normal_vector.csv";
   std::cout << "Processing " << pose_csv << " & " << normvec_csv << " in the current directory." << std::endl;
@@ -130,25 +172,32 @@ int main(int argc, char** argv)
   // Place-holder for input and output poses
   VectorofPoses non_corrected_sim3, corrected_sim3;
   VectorofNormalVectors vector_of_normal_vectors;
+  std::vector< pcl::PointCloud<pcl::PointXYZI> > all_scans;
+  std::vector<unsigned int> key_list, seq_list, sec_list, nsec_list;
 
   getline(pose_stream, pose_line); // to skip header line of csv
   getline(normvec_stream, normvec_line); // to skip header line of csv
 
-  // Get data from csv and pcd
-  while(getline(pose_stream, pose_line) && getline(normvec_stream, normvec_line))
+  // Get data from bag and csv files
+  foreach(rosbag::MessageInstance const message, view)
   {
+    if(!getline(pose_stream, pose_line) || !getline(normvec_stream, normvec_line))
+    {
+      break;
+    }
+
     std::stringstream pose_line_stream(pose_line);
     std::stringstream normvec_line_stream(normvec_line);
 
     // Get identity data first to validate
     getline(pose_line_stream, key_str, ',');
-    int key = std::stoi(key_str);
+    unsigned int key = std::stoi(key_str);
     
     getline(pose_line_stream, seq_str, ',');
-    int sequence_pose = std::stoi(seq_str);
+    unsigned int sequence_pose = std::stoi(seq_str);
 
     getline(normvec_line_stream, seqnv_str, ',');
-    int sequence_normvec = std::stoi(seqnv_str);
+    unsigned int sequence_normvec = std::stoi(seqnv_str);
     if(sequence_pose != sequence_normvec)
     {
       std::cout << "ERROR: sequence_pose != sequence_normvec (" << sequence_pose << " != " << sequence_normvec << ")" << std::endl;
@@ -157,14 +206,23 @@ int main(int argc, char** argv)
     }
 
     getline(pose_line_stream, sec_str, ',');
-    getline(pose_line_stream, nsec_str, ','); // Unused
+    getline(pose_line_stream, nsec_str, ',');
     getline(normvec_line_stream, secnv_str, ',');
-    getline(normvec_line_stream, nsecnv_str, ','); // Unused
+    getline(normvec_line_stream, nsecnv_str, ',');
     unsigned int sec_pose = std::stoi(sec_str);
+    unsigned int nsec_pose = std::stoi(nsec_str);
     unsigned int sec_normvec = std::stoi(secnv_str);
+    unsigned int nsec_normvec = std::stoi(nsecnv_str);
     if(sec_pose != sec_normvec)
     {
       std::cout << "ERROR: sec_pose != sec_normvec (" << sec_pose << " != " << sec_normvec << ")" << std::endl;
+      std::cout << "Please ensure that the same bagfile was for the files." << std::endl;
+      return(-1);
+    }
+
+    if(nsec_pose != nsec_normvec)
+    {
+      std::cout << "ERROR: nsec_pose != nsec_normvec (" << nsec_pose << " != " << nsec_normvec << ")" << std::endl;
       std::cout << "Please ensure that the same bagfile was for the files." << std::endl;
       return(-1);
     }
@@ -201,21 +259,55 @@ int main(int argc, char** argv)
     Pose3d current_pose(scan_p, scan_q);
     non_corrected_sim3.push_back(current_pose);
 
-    // Get ground surface normal vector in global frame
+    // Get ground surface normal vector -> Vector3d
     Eigen::Vector3d normvec_local(std::stod(xnv_str), std::stod(ynv_str), std::stod(znv_str));
-    Eigen::Vector3d normvec_global = scan_q.toRotationMatrix() * normvec_local;
-    vector_of_normal_vectors.push_back(normvec_global);
+    vector_of_normal_vectors.push_back(normvec_local);
+
+    // And finally, the pointcloud
+    sensor_msgs::PointCloud2::ConstPtr input_cloud = message.instantiate<sensor_msgs::PointCloud2>();
+    if(input_cloud == NULL) // no data?
+    {
+      std::cout << "No input PointCloud available. Waiting..." << std::endl;
+      continue;
+    }
+    else // check whether the sequence match
+    {
+      if(input_cloud->header.seq != sequence_pose)
+      {
+        std::cout << "Error: input_cloud->header.seq != sequence_pose (" << input_cloud->header.seq << " != " << sequence_pose << ")" << std::endl;
+        return -1;
+      }
+    }
+    
+    // From ROS msg to PCL pcloud
+    pcl::PointCloud<pcl::PointXYZI> scan;
+    pcl::fromROSMsg(*input_cloud, scan);
+    all_scans.push_back(scan);
+
+    // Save meta data
+    key_list.push_back(key);
+    seq_list.push_back(sequence_pose);
+    sec_list.push_back(sec_pose);
+    nsec_list.push_back(nsec_pose);
 
     // Show output
-    std::cout << "Importing scan sequence " << seq_str << " at " << sec_str << "." << nsec_str << yaw << std::endl;
-    std::cout << "[n] = [" << normvec_global[0] << "," << normvec_global[1] << "," << normvec_global[2] << "]" << std::endl;
-    std::cout << "---------------------------------------" << std::endl;
+    // std::cout << "Importing [key, sequence] [" << key << ", " << seq_str << "] at " << sec_str << "." << nsec_str << std::endl;
+    // std::cout << "[n] = [" << normvec_local[0] << "," << normvec_local[1] << "," << normvec_local[2] << "]" << std::endl;
+    // std::cout << "---------------------------------------" << std::endl;
   }
-  std::cout << "Finished importing pose data." << std::endl;
-  if(non_corrected_sim3.size() != vector_of_normal_vectors.size())
+  std::cout << "Finished reading data." << std::endl;
+  std::cout << "Pose: " << non_corrected_sim3.size() << "\n";
+  std::cout << "Vector: " << vector_of_normal_vectors.size() << std::endl;
+  std::cout << "Cloud: " << all_scans.size() << std::endl;
+  if(non_corrected_sim3.size() != vector_of_normal_vectors.size() || non_corrected_sim3.size() != all_scans.size())
   {
-    std::cout << "ERROR: non_corrected_sim3.size() != vector_of_normal_vectors.size() (" 
-              << non_corrected_sim3.size() << " != " << vector_of_normal_vectors.size() << ")" << std::endl;
+    std::cout << "ERROR: Size of the data do not match!" << std::endl;
+    return(-1);
+  }
+
+  if(!non_corrected_sim3.size() || !vector_of_normal_vectors.size() || !all_scans.size())
+  {
+    std::cout << "ERROR: Zero-sized data!" << std::endl;
     return(-1);
   }
 
@@ -227,63 +319,60 @@ int main(int argc, char** argv)
   Pose3d end_corrected_pose(final_scan_p, final_scan_q);
 
   // Pose Graph Optimize!
-  optimizeEssentialGraph(non_corrected_sim3,
-                         vector_of_normal_vectors,
-                         end_corrected_pose,
-                         corrected_sim3);
+  optimizeEssentialGraphWithL2(non_corrected_sim3,
+                               vector_of_normal_vectors,
+                               L2_strength,
+                               *non_corrected_sim3.end(),//end_corrected_pose,
+                               corrected_sim3);
   
   // Re-map with optimized pose
   #ifdef OUTPUT_POSE  // Also, output pose.txt 
-  std::ofstream outp;
+  std::ofstream out_stream;
   std::string out_file = "optimized_pose.csv";
-  outp.open(out_file);
-  outp << "key,seq,sec,nsec,x,y,z,roll,pitch,yaw, nx, ny, nz" << std::endl;
+  out_stream.open(out_file);
+  out_stream << "key,sequence,sec,nsec,x,y,z,roll,pitch,yaw" << std::endl;
   #endif // OUTPUT_POSE
 
-//   if(all_scans.size() != corrected_sim3.size())
-//   {
-//     std::cout << "Error: number of pointclouds and poses do not match!" << std::endl;
-//     std::cout << "Pointclouds: " << all_scans.size() << std::endl;
-//     std::cout << "Poses: " << corrected_sim3.size() << std::endl;
-//     return -1;
-//   }
+  std::cout << "Re-mapping... " << std::endl;
+  pcl::PointCloud<pcl::PointXYZI> map; // full map holder
+  map.header.frame_id = "map";
+  for(int i = 0, i_end = corrected_sim3.size(); i < i_end; i++)
+  {
+    // Get transform
+    double x = corrected_sim3[i].p.x();
+    double y = corrected_sim3[i].p.y();
+    double z = corrected_sim3[i].p.z();
+    tf::Quaternion q(corrected_sim3[i].q.x(),
+                     corrected_sim3[i].q.y(),
+                     corrected_sim3[i].q.z(),
+                     corrected_sim3[i].q.w());
+    double roll, pitch, yaw;
+    tf::Matrix3x3(q).getRPY(roll, pitch, yaw);
+    Eigen::Affine3f global_transform = pcl::getTransformation(x, y, z, roll, pitch, yaw);
 
-//   std::cout << "Re-mapping... " << std::endl;
-//   for(size_t i = 0, iend = corrected_sim3.size(); i < iend; i++)
-//   {
-//     // Get transform
-//     double x = corrected_sim3[i].p.x();
-//     double y = corrected_sim3[i].p.y();
-//     double z = corrected_sim3[i].p.z();
-//     tf::Quaternion q(corrected_sim3[i].q.x(),
-//                       corrected_sim3[i].q.y(),
-//                       corrected_sim3[i].q.z(),
-//                       corrected_sim3[i].q.w());
-//     double roll, pitch, yaw;
-//     tf::Matrix3x3(q).getRPY(roll, pitch, yaw);
-//     Eigen::Affine3f global_transform = pcl::getTransformation(x, y, z, roll, pitch, yaw);
+    // Do transform
+    pcl::PointCloud<pcl::PointXYZI> dst;
+    pcl::transformPointCloud(all_scans[i], dst, global_transform);
 
-//     // Do transform
-//     pcl::PointCloud<pcl::PointXYZI> dst;
-//     pcl::transformPointCloud(all_scans[i], dst, global_transform);
+    // Add tf-ed scan to map
+    map += dst;
 
-//     // Add tf-ed scan to map
-//     map += dst;
+    #ifdef OUTPUT_POSE // to .txt
+    out_stream << key_list[i] << "," << seq_list[i] << "," << sec_list[i] << "," << nsec_list[i] << ","
+               << x << "," << y << "," << z << "," << roll << "," << pitch << "," << yaw << std::endl;
+    #endif // OUTPUT_POSE
+  }
 
-// #ifdef OUTPUT_POSE // to .txt
-//     outp << x << "," << y << "," << z << "," << roll << "," << pitch << "," << yaw << std::endl;
-// #endif // OUTPUT_POSE
-//   }
+  std::cout << "Re-mapping finished. Total map size: " << map.size() << " points." << std::endl;
 
-//   std::cout << "Re-mapping finished. Total map size: " << map.size() << " points." << std::endl;
-//   // Writing Point Cloud data to PCD file
-//   std::string out_filename = "optimized_graph";
-//   pcl::io::savePCDFileBinary(out_filename + ".pcd", map);
-//   std::cout << "Finished. Saved pointcloud to " << out_filename << ".pcd" << std::endl;
+  // Writing Point Cloud data to PCD file
+  // std::string out_filename = "optimizedL2_map";
+  // pcl::io::savePCDFileBinary(out_filename + ".pcd", map);
+  // std::cout << "Finished. Saved pointcloud to " << out_filename << ".pcd" << std::endl;
 
-// #ifdef OUTPUT_POSE
-//   std::cout << "optimized_poses.csv written into the current directory." << std::endl;
-// #endif
+  #ifdef OUTPUT_POSE
+  std::cout << "optimized_poses.csv written into the current directory." << std::endl;
+  #endif
 
   return(0);
 }

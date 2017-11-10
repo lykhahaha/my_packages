@@ -27,6 +27,9 @@ instead of putting the directory as an argument because I have not implement tha
 
 int main(int argc, char** argv)
 {
+  ros::init(argc, argv, "import_to_bag");
+  ros::NodeHandle nh;
+  ros::Publisher pub = nh.advertise<sensor_msgs::PointCloud2>("/points_raw", 1);
   // Heads-up reminder for usage
   std::cout << "INFO: Reading data in the txts/ directory." << std::endl;
   std::cout << "Reading LidarTimestamp.csv file in current directory." << std::endl;
@@ -68,7 +71,8 @@ int main(int argc, char** argv)
   uint64_t sec, nsec;
   while(getline(time_stamp_stream, time_stamp_str))
   {
-    std::ifstream in_stream;  
+    std::ifstream in_stream;
+    std::cout << "--------------------------------------------------------------\n";
     std::cout << "Reading: txts/Lidar" << file_number << ".txt" << std::endl;
     in_stream.open("txts/Lidar" + std::to_string(file_number) + ".txt");
 
@@ -126,7 +130,9 @@ int main(int argc, char** argv)
     scan_msg_ptr->header.stamp.sec = sec;
     scan_msg_ptr->header.stamp.nsec = nsec;
     scan_msg_ptr->header.frame_id = frame_id;
-    bag.write("/points_raw", ros::Time(sec, nsec), *scan_msg_ptr); 
+    // bag.write("/points_raw", ros::Time(sec, nsec), *scan_msg_ptr); 
+    bag.write("/points_raw", ros::Time::now(), *scan_msg_ptr); 
+    pub.publish(*scan_msg_ptr);
     file_number++;     
   }
 

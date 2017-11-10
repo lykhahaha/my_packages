@@ -272,7 +272,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
     p.intensity = (double)item->intensity;
 
     r = sqrt(pow(p.x, 2.0) + pow(p.y, 2.0));
-    if (r > min_scan_range)
+    if(r > min_scan_range)
     {
       scan.push_back(p);
     }
@@ -403,6 +403,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   // Calculate the shift between added_pos and current_pos
   double shift = sqrt(pow(current_pose.x - added_pose.x, 2.0) + pow(current_pose.y - added_pose.y, 2.0));
   t1 = std::chrono::system_clock::now();
+  pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, t_localizer);
   if(shift >= min_add_scan_shift || diff_yaw >= min_add_scan_yaw_diff)
   {
 #ifdef MY_EXTRACT_SCANPOSE
@@ -414,8 +415,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
                << std::endl;
 #endif // MY_EXTRACT_SCANPOSE
 
-    // add_new_scan(*transformed_scan_ptr);
-    add_new_scan(*output_cloud);
+    add_new_scan(*transformed_scan_ptr);
     add_scan_number++;
     added_pose.x = current_pose.x;
     added_pose.y = current_pose.y;
@@ -435,8 +435,6 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
                << std::endl;
   }
 #endif // MY_EXTRACT_SCANPOSE
-
-  pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, t_localizer);
 
   t2 = std::chrono::system_clock::now();
   double ndt_keyscan_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
@@ -727,7 +725,7 @@ int main(int argc, char** argv)
   std::cout << "Loading " << _bag_file << std::endl;
   rosbag::Bag bag(_bag_file, rosbag::bagmode::Read);
   std::vector<std::string> reading_topics;
-    reading_topics.push_back(std::string("/velodyne_points"));
+    reading_topics.push_back(std::string("/points_raw"));
   ros::Time rosbag_start_time = ros::TIME_MAX;
   ros::Time rosbag_stop_time = ros::TIME_MIN;
   if(_play_duration <= 0)

@@ -94,7 +94,7 @@ int main(int argc, char** argv)
     scan_msg_ptr->header.stamp.sec = sec;
     scan_msg_ptr->header.stamp.nsec = nsec;
     scan_msg_ptr->header.frame_id = frame_id;
-    bag.write("/velodyne_points", ros::Time(sec, nsec), *scan_msg_ptr);
+    bag.write("/points_raw", ros::Time(sec, nsec), *scan_msg_ptr);
 
     // Update fake data before processing next scan
     seq++;
