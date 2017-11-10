@@ -22,7 +22,7 @@
 
 #include <Eigen/Dense>
 
-#include "my_package/pslPoseGraph.h"
+#include "my_package/pslPoseGraphL2.h"
 
 using namespace std;
 using namespace ros;
@@ -47,10 +47,7 @@ bool optimizeEssentialGraphWithL2(const VectorofPoses &NonCorrectedSim3,
   poses.clear();
   VectorOfConstraints constraints;
   constraints.clear();
-  // VectorofNormalVectors nvecs;
-  // nvecs.resize(NonCorrectedSim3.size());
-  // nvecs.clear();
-  
+
   // Set KeyFrame poses (vertex)
   // We assume the start frame and end frame are the two ends of the loop
   // int endID = NonCorrectedSim3.size()-1;
@@ -58,7 +55,6 @@ bool optimizeEssentialGraphWithL2(const VectorofPoses &NonCorrectedSim3,
   for(size_t i = 0, iend = NonCorrectedSim3.size(); i < iend; i++)
   {
     poses[i] = NonCorrectedSim3[i]; // basically, poses = copy(NonCorrectedSim3)
-    // nvecs[i] = GroundNormalVector3[i]; // same for this nvecs
   }
 
   // edges (constraint just between two neighboring scans)
@@ -69,7 +65,7 @@ bool optimizeEssentialGraphWithL2(const VectorofPoses &NonCorrectedSim3,
     const Pose3d Sjw = Swj.inverse();
     const Pose3d Sji = Sjw * Swi;
 
-    Constraint3d constraint(i, i+1, Sji);
+    Constraint3d constraint(i, i+1, Sji, GroundNormalVector3[i], GroundNormalVector3[i+1]);
       
     constraints.push_back(constraint);
   }
@@ -87,7 +83,10 @@ bool optimizeEssentialGraphWithL2(const VectorofPoses &NonCorrectedSim3,
     // const Constraint3d& constraint = constraints[i];
     const Eigen::Matrix<double, 6, 6> sqrt_information = constraint.information.llt().matrixL();
     // Ceres will take ownership of the pointer.
-    ceres::CostFunction* cost_function = PoseGraph3dErrorTerm::Create(constraint.t_be, sqrt_information);
+    ceres::CostFunction* cost_function = PoseGraph3dErrorTerm::Create(constraint.t_be,
+                                                                      sqrt_information,
+                                                                      constraint.nvec_a_,
+                                                                      constraint.nvec_b_);
 
     // Add pose constraints
     problem.AddResidualBlock(cost_function, loss_function,
@@ -97,13 +96,13 @@ bool optimizeEssentialGraphWithL2(const VectorofPoses &NonCorrectedSim3,
                              poses[constraint.id_end].q.coeffs().data());
 
     // Add ground surface normal vector constraints
-    ceres::CostFunction* L2_function = 
-                PoseGraph3dL2Term::Create(GroundNormalVector3[constraint.id_begin],
-                                          GroundNormalVector3[constraint.id_end],
-                                          regularization_strength);
-    problem.AddResidualBlock(L2_function, loss_function,
-                             poses[constraint.id_begin].q.coeffs().data(),
-                             poses[constraint.id_end].q.coeffs().data());
+    // ceres::CostFunction* L2_function = 
+    //             PoseGraph3dL2Term::Create(GroundNormalVector3[constraint.id_begin],
+    //                                       GroundNormalVector3[constraint.id_end],
+    //                                       regularization_strength);
+    // problem.AddResidualBlock(L2_function, loss_function,
+    //                          poses[constraint.id_begin].q.coeffs().data(),
+    //                          poses[constraint.id_end].q.coeffs().data());
 
     problem.SetParameterization(poses[constraint.id_begin].q.coeffs().data(),
                 quaternion_local_parameterization);
