@@ -29,6 +29,96 @@ using namespace ros;
 
 #define OUTPUT_POSE // To write x, y, z into a txt file
 
+struct pose
+{
+  double x;
+  double y;
+  double z;
+  double roll;
+  double pitch;
+  double yaw;
+};
+
+struct velocity
+{
+  double x;
+  double y;
+  double z;
+  double roll;
+  double pitch;
+  double yaw;
+};
+
+inline double getYawAngle(double _x, double _y)
+{
+  return std::atan2(_y, _x) * 180 / 3.14159265359; // degree value
+}
+
+inline double calculateMinAngleDist(double first, double second) // in degree
+{
+  double difference = first - second;
+  if(difference >= 180.0)
+    return difference - 360.0;
+  if(difference <= -180.0)
+    return difference + 360.0;
+  return difference;
+}
+
+void correctLIDARscan(pcl::PointCloud<pcl::PointXYZI>& scan, Eigen::Affine3d relative_tf, double scan_interval)
+{
+  // Correct scan using vel
+  pcl::PointCloud<pcl::PointXYZI> scan_packet;
+  std::vector<pcl::PointCloud<pcl::PointXYZI>> scan_packets_vector;
+  double base_azimuth = getYawAngle((scan.begin())->x, (scan.begin())->y);
+  for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = scan.begin(); item != scan.end(); item++)
+  {
+    double crnt_azimuth = getYawAngle(item->x, item->y);
+    if(std::fabs(calculateMinAngleDist(crnt_azimuth, base_azimuth)) < 0.01) // 0.17 degree is the typical change
+    {
+      scan_packet.push_back(*item);
+    }
+    else // new azimuth reached
+    {
+      scan_packets_vector.push_back(scan_packet);
+      scan_packet.clear();
+      scan_packet.push_back(*item);
+      base_azimuth = crnt_azimuth;
+    }
+  }
+
+  scan.clear();
+  pose crnt_pose = {0, 0, 0, 0, 0, 0};
+  velocity vel;
+  pcl::getTranslationAndEulerAngles(relative_tf, vel.x, vel.y, vel.z, vel.roll, vel.pitch, vel.yaw);
+  vel.x = vel.x / scan_interval;
+  vel.y = vel.y / scan_interval;
+  vel.z = vel.z / scan_interval;
+  vel.roll = vel.roll / scan_interval;
+  vel.pitch = vel.pitch / scan_interval;
+  vel.yaw = vel.yaw / scan_interval;
+  for(int i = 0, npackets = scan_packets_vector.size(); i < npackets; i++)
+  {
+    double offset_time = scan_interval * i / npackets;
+    pose this_packet_pose = {crnt_pose.x - vel.x * offset_time,
+                             crnt_pose.y - vel.y * offset_time,
+                             crnt_pose.z - vel.z * offset_time,
+                             crnt_pose.roll - vel.roll * offset_time,
+                             crnt_pose.pitch - vel.pitch * offset_time,
+                             crnt_pose.yaw - vel.yaw * offset_time}; 
+
+    Eigen::Affine3d transform;
+    pcl::getTransformation(this_packet_pose.x, 
+                           this_packet_pose.y, 
+                           this_packet_pose.z, 
+                           this_packet_pose.roll, 
+                           this_packet_pose.pitch, 
+                           this_packet_pose.yaw, transform);
+    pcl::PointCloud<pcl::PointXYZI> corrected_packet;
+    pcl::transformPointCloud(scan_packets_vector[npackets-1-i], corrected_packet, transform);
+    scan += corrected_packet;
+  }
+}
+
 bool optimizeEssentialGraphWithL2(const VectorofPoses &NonCorrectedSim3,
                                   const VectorofNormalVectors &GroundNormalVector3,
                                   const double regularization_strength,
@@ -50,7 +140,7 @@ bool optimizeEssentialGraphWithL2(const VectorofPoses &NonCorrectedSim3,
 
   // Set KeyFrame poses (vertex)
   // We assume the start frame and end frame are the two ends of the loop
-  // int endID = NonCorrectedSim3.size()-1;
+  int endID = NonCorrectedSim3.size()-1;
   
   for(size_t i = 0, iend = NonCorrectedSim3.size(); i < iend; i++)
   {
@@ -71,7 +161,7 @@ bool optimizeEssentialGraphWithL2(const VectorofPoses &NonCorrectedSim3,
   }
   
   // modify the pose of last keyframe to the corrected one
-  // poses[endID] = endCorrectedPose;
+  poses[endID] = endCorrectedPose;
 
   ceres::LossFunction* loss_function = NULL;
   ceres::LocalParameterization *quaternion_local_parameterization = new ceres::EigenQuaternionParameterization;
@@ -86,7 +176,8 @@ bool optimizeEssentialGraphWithL2(const VectorofPoses &NonCorrectedSim3,
     ceres::CostFunction* cost_function = PoseGraph3dErrorTerm::Create(constraint.t_be,
                                                                       sqrt_information,
                                                                       constraint.nvec_a_,
-                                                                      constraint.nvec_b_);
+                                                                      constraint.nvec_b_,
+                                                                      regularization_strength);
 
     // Add pose constraints
     problem.AddResidualBlock(cost_function, loss_function,
@@ -94,15 +185,6 @@ bool optimizeEssentialGraphWithL2(const VectorofPoses &NonCorrectedSim3,
                              poses[constraint.id_begin].q.coeffs().data(),
                              poses[constraint.id_end].p.data(),
                              poses[constraint.id_end].q.coeffs().data());
-
-    // Add ground surface normal vector constraints
-    // ceres::CostFunction* L2_function = 
-    //             PoseGraph3dL2Term::Create(GroundNormalVector3[constraint.id_begin],
-    //                                       GroundNormalVector3[constraint.id_end],
-    //                                       regularization_strength);
-    // problem.AddResidualBlock(L2_function, loss_function,
-    //                          poses[constraint.id_begin].q.coeffs().data(),
-    //                          poses[constraint.id_end].q.coeffs().data());
 
     problem.SetParameterization(poses[constraint.id_begin].q.coeffs().data(),
                 quaternion_local_parameterization);
@@ -113,12 +195,12 @@ bool optimizeEssentialGraphWithL2(const VectorofPoses &NonCorrectedSim3,
   // set constant pose for start and end scans
   problem.SetParameterBlockConstant(poses[0].p.data());
   problem.SetParameterBlockConstant(poses[0].q.coeffs().data());
-  // problem.SetParameterBlockConstant(poses[endID].p.data());
-  // problem.SetParameterBlockConstant(poses[endID].q.coeffs().data());
+  problem.SetParameterBlockConstant(poses[endID].p.data());
+  problem.SetParameterBlockConstant(poses[endID].q.coeffs().data());
 
   // optimize
   ceres::Solver::Options options;
-  options.max_num_iterations = 1000;  //can try more iterations if not converge
+  options.max_num_iterations = 50000;  //can try more iterations if not converge
   options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
   options.minimizer_progress_to_stdout = true;
   // options.parameter_tolerance = 1e-15;
@@ -145,7 +227,7 @@ int main(int argc, char** argv)
   {
     L2_strength = std::stod(argv[1]);
   }
-
+  std::cout << "lambda = " << L2_strength << std::endl;
   std::string bagfile = "/home/zwu/LIDAR-DATA/3oct-around-pana1.bag";
   std::string bagtopic = "/points_raw";
   std::cout << "Reading bag: " << bagfile << " [topic: " << bagtopic << "]... " << std::flush;
@@ -311,9 +393,9 @@ int main(int argc, char** argv)
   }
 
   // Ground-truth pose for the final scan
-  Eigen::Vector3d final_scan_p(-74.2269, 14.2863, 3.40642);
+  Eigen::Vector3d final_scan_p(-78.1281, -10.2903, 3.18067);
   tf::Quaternion final_q;
-  final_q.setRPY(0.0418069, -0.0479844, 1.64459);
+  final_q.setRPY(0.0547467, -0.0623987, 1.61432);
   Eigen::Quaterniond final_scan_q(final_q.w(), final_q.x(), final_q.y(), final_q.z());
   Pose3d end_corrected_pose(final_scan_p, final_scan_q);
 
@@ -321,7 +403,7 @@ int main(int argc, char** argv)
   optimizeEssentialGraphWithL2(non_corrected_sim3,
                                vector_of_normal_vectors,
                                L2_strength,
-                               *non_corrected_sim3.end(),//end_corrected_pose,
+                               end_corrected_pose,
                                corrected_sim3);
   
   // Re-map with optimized pose
@@ -335,6 +417,9 @@ int main(int argc, char** argv)
   std::cout << "Re-mapping... " << std::endl;
   pcl::PointCloud<pcl::PointXYZI> map; // full map holder
   map.header.frame_id = "map";
+  Eigen::Affine3d prev_transform, crnt_transform, rel_transform;
+  ros::Time prev_time;
+  double interval;
   for(int i = 0, i_end = corrected_sim3.size(); i < i_end; i++)
   {
     // Get transform
@@ -347,11 +432,29 @@ int main(int argc, char** argv)
                      corrected_sim3[i].q.w());
     double roll, pitch, yaw;
     tf::Matrix3x3(q).getRPY(roll, pitch, yaw);
-    Eigen::Affine3f global_transform = pcl::getTransformation(x, y, z, roll, pitch, yaw);
+    pcl::getTransformation(x, y, z, roll, pitch, yaw, crnt_transform);
+
+    // Correct scan
+    ros::Time crnt_time(sec_list[i], nsec_list[i]);
+    
+    if(i == 0)
+    {
+      prev_transform = crnt_transform;
+      interval = 0.1; // dummy value
+      rel_transform = prev_transform.inverse() * crnt_transform;
+    }
+    else
+    {
+      interval = (crnt_time - prev_time).toSec();
+      rel_transform = prev_transform.inverse() * crnt_transform;
+    }
+
+    pcl::PointCloud<pcl::PointXYZI> src = all_scans[i];
+    correctLIDARscan(src, rel_transform, interval);
 
     // Do transform
     pcl::PointCloud<pcl::PointXYZI> dst;
-    pcl::transformPointCloud(all_scans[i], dst, global_transform);
+    pcl::transformPointCloud(src, dst, crnt_transform);
 
     // Add tf-ed scan to map
     map += dst;
@@ -360,14 +463,18 @@ int main(int argc, char** argv)
     out_stream << key_list[i] << "," << seq_list[i] << "," << sec_list[i] << "," << nsec_list[i] << ","
                << x << "," << y << "," << z << "," << roll << "," << pitch << "," << yaw << std::endl;
     #endif // OUTPUT_POSE
+
+    // Update prev values
+    prev_transform = crnt_transform;
+    prev_time = crnt_time;
   }
 
   std::cout << "Re-mapping finished. Total map size: " << map.size() << " points." << std::endl;
 
   // Writing Point Cloud data to PCD file
-  // std::string out_filename = "optimizedL2_map";
-  // pcl::io::savePCDFileBinary(out_filename + ".pcd", map);
-  // std::cout << "Finished. Saved pointcloud to " << out_filename << ".pcd" << std::endl;
+  std::string out_filename = "optimizedL2_map";
+  pcl::io::savePCDFileBinary(out_filename + ".pcd", map);
+  std::cout << "Finished. Saved pointcloud to " << out_filename << ".pcd" << std::endl;
 
   #ifdef OUTPUT_POSE
   std::cout << "optimized_poses.csv written into the current directory." << std::endl;

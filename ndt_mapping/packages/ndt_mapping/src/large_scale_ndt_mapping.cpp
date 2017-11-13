@@ -196,12 +196,10 @@ void correctLIDARscan(pcl::PointCloud<pcl::PointXYZI>& scan, Eigen::Affine3d rel
     }
   }
 
-  // assuming T'' = 0 and only linear motion
   scan.clear();
   pose crnt_pose = {0, 0, 0, 0, 0, 0};
   velocity vel;
   pcl::getTranslationAndEulerAngles(relative_tf, vel.x, vel.y, vel.z, vel.roll, vel.pitch, vel.yaw);
-  // std::cout << "SCAN: " << scan_interval << std::endl;
   vel.x = vel.x / scan_interval;
   vel.y = vel.y / scan_interval;
   vel.z = vel.z / scan_interval;
@@ -218,12 +216,13 @@ void correctLIDARscan(pcl::PointCloud<pcl::PointXYZI>& scan, Eigen::Affine3d rel
                              crnt_pose.pitch - vel.pitch * offset_time,
                              crnt_pose.yaw - vel.yaw * offset_time}; 
 
-    Eigen::Affine3f transform = pcl::getTransformation(this_packet_pose.x, 
-                                                       this_packet_pose.y, 
-                                                       this_packet_pose.z, 
-                                                       this_packet_pose.roll, 
-                                                       this_packet_pose.pitch, 
-                                                       this_packet_pose.yaw);
+    Eigen::Affine3d transform;
+    pcl::getTransformation(this_packet_pose.x, 
+                           this_packet_pose.y, 
+                           this_packet_pose.z, 
+                           this_packet_pose.roll, 
+                           this_packet_pose.pitch, 
+                           this_packet_pose.yaw, transform);
     pcl::PointCloud<pcl::PointXYZI> corrected_packet;
     pcl::transformPointCloud(scan_packets_vector[npackets-1-i], corrected_packet, transform);
     scan += corrected_packet;
@@ -541,7 +540,7 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
 {
   char buffer[100];
   std::strftime(buffer, 100, "%Y%b%d_%H%M", pnow);
-  std::string filename = work_directory + "map_" + std::string(buffer) + ".pcd";
+  std::string filename = work_directory + "ndt_" + std::string(buffer) + ".pcd";
   std::cout << "-----------------------------------------------------------------\n";
   std::cout << "Writing the last map to pcd file before shutting down node..." << std::endl;
 

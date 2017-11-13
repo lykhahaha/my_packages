@@ -136,11 +136,13 @@ class PoseGraph3dErrorTerm
   PoseGraph3dErrorTerm(const Pose3d& t_ab_measured,
                        const Eigen::Matrix<double, 6, 6>& sqrt_information,
                        const Eigen::Vector3d& nv_a,
-                       const Eigen::Vector3d& nv_b)
+                       const Eigen::Vector3d& nv_b,
+                       const double lambda)
     : t_ab_measured_(t_ab_measured)
     , sqrt_information_(sqrt_information)
     , nvec_a_(nv_a)
     , nvec_b_(nv_b)
+    , lambda_(lambda)
   {};
 
   template <typename T>
@@ -182,15 +184,14 @@ class PoseGraph3dErrorTerm
     // Add the regu term
     Eigen::Matrix<T, 3, 1> n_a_global = q_a.toRotationMatrix() * nvec_a_.template cast<T>();
     Eigen::Matrix<T, 3, 1> n_b_global = q_b.toRotationMatrix() * nvec_b_.template cast<T>();
-    double e_L2 = 1000.0 * (1.0 - n_a_global[0] * n_b_global[0] - n_a_global[1] * n_b_global[1] - n_a_global[2] * n_b_global[2]);
+    T e_L2 = lambda_ * (1.0 - n_a_global[0] * n_b_global[0] - n_a_global[1] * n_b_global[1] - n_a_global[2] * n_b_global[2]);
 
-    residuals.template block<1, 1>(0, 0) += e_L2;
-    residuals.template block<1, 1>(1, 0) += e_L2;
-    residuals.template block<1, 1>(2, 0) += e_L2;
-    residuals.template block<1, 1>(3, 0) += e_L2;
-    residuals.template block<1, 1>(4, 0) += e_L2;
-    residuals.template block<1, 1>(5, 0) += e_L2;
-
+    residuals[0] += e_L2;
+    residuals[1] += e_L2;
+    residuals[2] += e_L2;
+    residuals[3] += e_L2;
+    residuals[4] += e_L2;
+    residuals[5] += e_L2;
 
     return true;
   }
@@ -198,10 +199,11 @@ class PoseGraph3dErrorTerm
   static ceres::CostFunction* Create(const Pose3d& t_ab_measured,
                                      const Eigen::Matrix<double, 6, 6>& sqrt_information,
                                      const Eigen::Vector3d nv_a,
-                                     const Eigen::Vector3d nv_b)
+                                     const Eigen::Vector3d nv_b,
+                                     const double lambda)
   {
     return new ceres::AutoDiffCostFunction<PoseGraph3dErrorTerm, 6, 3, 4, 3, 4>(
-              new PoseGraph3dErrorTerm(t_ab_measured, sqrt_information, nv_a, nv_b));
+              new PoseGraph3dErrorTerm(t_ab_measured, sqrt_information, nv_a, nv_b, lambda));
   }
 
  private:
@@ -211,45 +213,9 @@ class PoseGraph3dErrorTerm
   const Eigen::Matrix<double, 6, 6> sqrt_information_;
   // Norm vec
   const Eigen::Vector3d nvec_a_, nvec_b_;
+  // L2 strength
+  const double lambda_;
 };
-
-class PoseGraph3dL2Term
-{
- public:
-  PoseGraph3dL2Term(Eigen::Vector3d normal_vector_a,
-                    Eigen::Vector3d normal_vector_b,
-                    double lambda): 
-    nvec_a_(normal_vector_a), nvec_b_(normal_vector_b), lambda_(lambda) 
-  {};
-
-  template <typename T>
-  bool operator()(const T* const q_a_ptr, const T* const q_b_ptr, T* e) const
-  {
-    Eigen::Map<const Eigen::Quaternion<T> > q_a(q_a_ptr);
-    Eigen::Map<const Eigen::Quaternion<T> > q_b(q_b_ptr);
-    Eigen::Matrix<T, 3, 1> n_a_global = q_a.toRotationMatrix() * nvec_a_.template cast<T>();
-    Eigen::Matrix<T, 3, 1> n_b_global = q_b.toRotationMatrix() * nvec_b_.template cast<T>();
-    e[0] = lambda_ * (1.0 - n_a_global[0] * n_b_global[0] - n_a_global[1] * n_b_global[1] - n_a_global[2] * n_b_global[2]);
-    return true;
-  }
-
-  static ceres::CostFunction* Create(Eigen::Vector3d normal_vector_a,
-                                     Eigen::Vector3d normal_vector_b,
-                                     const double lambda)
-  {
-    return new ceres::AutoDiffCostFunction<PoseGraph3dL2Term, 1, 4, 4>(
-                      new PoseGraph3dL2Term(normal_vector_a, normal_vector_b,lambda));
-  }
- private:
-  // Strength of the regularization
-  Eigen::Vector3d nvec_a_, nvec_b_;
-  double lambda_;
-};
-
-bool optimizeEssentialGraph(const VectorofPoses &NonCorrectedSim3, 
-                            const VectorofNormalVectors &GroundNormalVector3,
-                            Pose3d endCorrectedPose,
-                            VectorofPoses &CorrectedSim3);
 
 bool optimizeEssentialGraphWithL2(const VectorofPoses &NonCorrectedSim3, 
                                   const VectorofNormalVectors &GroundNormalVector3,
