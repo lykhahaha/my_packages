@@ -140,8 +140,8 @@ class PoseGraph3dErrorTerm
                        const double lambda)
     : t_ab_measured_(t_ab_measured)
     , sqrt_information_(sqrt_information)
-    , nvec_a_(nv_a)
-    , nvec_b_(nv_b)
+    , nvec_a_(nv_a.normalized())
+    , nvec_b_(nv_b.normalized())
     , lambda_(lambda)
   {};
 
