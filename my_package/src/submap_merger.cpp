@@ -193,7 +193,7 @@ int main(int argc, char** argv)
     {
       if(input_cloud->header.seq != seq)
       {
-        std::cout << "Warn: input_cloud->header.seq != seq (" << input_cloud->header.seq << " != " << seq << ")" << std::endl;
+        std::cout << "Info: input_cloud->header.seq != seq (" << input_cloud->header.seq << " != " << seq << ")" << std::endl;
         continue;
       }
 

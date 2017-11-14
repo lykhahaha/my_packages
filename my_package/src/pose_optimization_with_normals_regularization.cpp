@@ -161,7 +161,7 @@ bool optimizeEssentialGraphWithL2(const VectorofPoses &NonCorrectedSim3,
   }
   
   // modify the pose of last keyframe to the corrected one
-  poses[endID] = endCorrectedPose;
+  // poses[endID] = endCorrectedPose;
 
   ceres::LossFunction* loss_function = NULL;
   ceres::LocalParameterization *quaternion_local_parameterization = new ceres::EigenQuaternionParameterization;
@@ -195,12 +195,12 @@ bool optimizeEssentialGraphWithL2(const VectorofPoses &NonCorrectedSim3,
   // set constant pose for start and end scans
   problem.SetParameterBlockConstant(poses[0].p.data());
   problem.SetParameterBlockConstant(poses[0].q.coeffs().data());
-  problem.SetParameterBlockConstant(poses[endID].p.data());
-  problem.SetParameterBlockConstant(poses[endID].q.coeffs().data());
+  // problem.SetParameterBlockConstant(poses[endID].p.data());
+  // problem.SetParameterBlockConstant(poses[endID].q.coeffs().data());
 
   // optimize
   ceres::Solver::Options options;
-  options.max_num_iterations = 50000;  //can try more iterations if not converge
+  options.max_num_iterations = 50000;  // can try more iterations if not converge
   options.linear_solver_type = ceres::SPARSE_NORMAL_CHOLESKY;
   options.minimizer_progress_to_stdout = true;
   // options.parameter_tolerance = 1e-15;
@@ -255,6 +255,7 @@ int main(int argc, char** argv)
   VectorofNormalVectors vector_of_normal_vectors;
   std::vector< pcl::PointCloud<pcl::PointXYZI> > all_scans;
   std::vector<unsigned int> key_list, seq_list, sec_list, nsec_list;
+  bool isGetLine = false;
 
   getline(pose_stream, pose_line); // to skip header line of csv
   getline(normvec_stream, normvec_line); // to skip header line of csv
@@ -262,9 +263,13 @@ int main(int argc, char** argv)
   // Get data from bag and csv files
   foreach(rosbag::MessageInstance const message, view)
   {
-    if(!getline(pose_stream, pose_line) || !getline(normvec_stream, normvec_line))
+    if(!isGetLine)   
     {
-      break;
+      if(!getline(pose_stream, pose_line) || !getline(normvec_stream, normvec_line))
+      {
+        break; // end of csv
+      }
+      isGetLine = true;
     }
 
     std::stringstream pose_line_stream(pose_line);
@@ -281,8 +286,7 @@ int main(int argc, char** argv)
     unsigned int sequence_normvec = std::stoi(seqnv_str);
     if(sequence_pose != sequence_normvec)
     {
-      std::cout << "ERROR: sequence_pose != sequence_normvec (" << sequence_pose << " != " << sequence_normvec << ")" << std::endl;
-      std::cout << "Please ensure that the same bagfile was for the files." << std::endl;
+      std::cout << "Error: sequence_pose > sequence_normvec (" << sequence_pose << " != " << sequence_normvec << ")" << std::endl;
       return(-1);
     }
 
@@ -294,24 +298,19 @@ int main(int argc, char** argv)
     unsigned int nsec_pose = std::stoi(nsec_str);
     unsigned int sec_normvec = std::stoi(secnv_str);
     unsigned int nsec_normvec = std::stoi(nsecnv_str);
+
     if(sec_pose != sec_normvec)
     {
-      std::cout << "ERROR: sec_pose != sec_normvec (" << sec_pose << " != " << sec_normvec << ")" << std::endl;
+      std::cout << "Error: sec_pose != sec_normvec (" << sec_pose << " != " << sec_normvec << ")" << std::endl;
       std::cout << "Please ensure that the same bagfile was for the files." << std::endl;
       return(-1);
     }
 
     if(nsec_pose != nsec_normvec)
     {
-      std::cout << "ERROR: nsec_pose != nsec_normvec (" << nsec_pose << " != " << nsec_normvec << ")" << std::endl;
+      std::cout << "Error: nsec_pose != nsec_normvec (" << nsec_pose << " != " << nsec_normvec << ")" << std::endl;
       std::cout << "Please ensure that the same bagfile was for the files." << std::endl;
       return(-1);
-    }
-
-    if(key == 0)
-    {
-      // not an added scan to map, skip 
-      continue;
     }
     
     // and the rest of the data
@@ -332,6 +331,34 @@ int main(int argc, char** argv)
     getline(normvec_line_stream, ynv_str, ',');
     getline(normvec_line_stream, znv_str);
 
+    // And finally, the pointcloud
+    sensor_msgs::PointCloud2::ConstPtr input_cloud = message.instantiate<sensor_msgs::PointCloud2>();
+    if(input_cloud == NULL) // no data?
+    {
+      std::cout << "No input PointCloud available. Waiting..." << std::endl;
+      continue;
+    }
+    else // check whether the sequence match
+    {
+      if(input_cloud->header.seq < sequence_pose)
+      {
+        std::cout << "Info: input_cloud->header.seq < sequence_pose (" << input_cloud->header.seq << " < " << sequence_pose << ")" << std::endl;
+        continue;
+      }
+      else if(input_cloud->header.seq > sequence_pose)
+      {
+        std::cout << "Error: input_cloud->header.seq > sequence_pose (" << input_cloud->header.seq << " > " << sequence_pose << ")" << std::endl;
+        return -1;
+      }
+    }
+
+    if(key == 0)
+    {
+      std::cout << "Skipping unadded scan." << std::endl;
+      isGetLine = false;
+      continue;
+    }
+
     // Get translation and rotation -> Pose3d
     Eigen::Vector3d scan_p(x, y, z);
     tf::Quaternion q;
@@ -343,22 +370,6 @@ int main(int argc, char** argv)
     // Get ground surface normal vector -> Vector3d
     Eigen::Vector3d normvec_local(std::stod(xnv_str), std::stod(ynv_str), std::stod(znv_str));
     vector_of_normal_vectors.push_back(normvec_local);
-
-    // And finally, the pointcloud
-    sensor_msgs::PointCloud2::ConstPtr input_cloud = message.instantiate<sensor_msgs::PointCloud2>();
-    if(input_cloud == NULL) // no data?
-    {
-      std::cout << "No input PointCloud available. Waiting..." << std::endl;
-      continue;
-    }
-    else // check whether the sequence match
-    {
-      if(input_cloud->header.seq != sequence_pose)
-      {
-        std::cout << "Error: input_cloud->header.seq != sequence_pose (" << input_cloud->header.seq << " != " << sequence_pose << ")" << std::endl;
-        return -1;
-      }
-    }
     
     // From ROS msg to PCL pcloud
     pcl::PointCloud<pcl::PointXYZI> scan;
@@ -375,6 +386,7 @@ int main(int argc, char** argv)
     // std::cout << "Importing [key, sequence] [" << key << ", " << seq_str << "] at " << sec_str << "." << nsec_str << std::endl;
     // std::cout << "[n] = [" << normvec_local[0] << "," << normvec_local[1] << "," << normvec_local[2] << "]" << std::endl;
     // std::cout << "---------------------------------------" << std::endl;
+    isGetLine = false;
   }
   std::cout << "Finished reading data." << std::endl;
   std::cout << "Pose: " << non_corrected_sim3.size() << "\n";
