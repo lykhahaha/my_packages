@@ -90,7 +90,7 @@ struct Constraint3d {
 
   // The inverse of the covariance matrix for the measurement. The order of the
   // entries are x, y, z, delta orientation.
-  Eigen::Matrix<double, 6, 6> information;
+  Eigen::Matrix<double, 7, 7> information;
 
   // L2, ground surface normal vector
   Eigen::Vector3d nvec_a_, nvec_b_;
@@ -106,7 +106,7 @@ struct Constraint3d {
     nvec_b_.fill(0.);
   };
 
-  Constraint3d(int ib, int ie, Pose3d t_be_, Eigen::Matrix<double, 6, 6> inf):
+  Constraint3d(int ib, int ie, Pose3d t_be_, Eigen::Matrix<double, 7, 7> inf):
       id_begin(ib), id_end(ie), t_be(t_be_), information(inf)
   {
     nvec_a_.fill(0.);
@@ -134,7 +134,7 @@ class PoseGraph3dErrorTerm
 {
  public:
   PoseGraph3dErrorTerm(const Pose3d& t_ab_measured,
-                       const Eigen::Matrix<double, 6, 6>& sqrt_information,
+                       const Eigen::Matrix<double, 7, 7>& sqrt_information,
                        const Eigen::Vector3d& nv_a,
                        const Eigen::Vector3d& nv_b,
                        const double lambda)
@@ -173,36 +173,29 @@ class PoseGraph3dErrorTerm
     // Compute the residuals.
     // [ position         ]   [ delta_p          ]
     // [ orientation (3x1)] = [ 2 * delta_q(0:2) ]
-    Eigen::Map<Eigen::Matrix<T, 6, 1> > residuals(residuals_ptr);
+    Eigen::Map<Eigen::Matrix<T, 7, 1> > residuals(residuals_ptr);
     residuals.template block<3, 1>(0, 0) =
         p_ab_estimated - t_ab_measured_.p.template cast<T>();
     residuals.template block<3, 1>(3, 0) = T(2.0) * delta_q.vec();
 
-    // Scale the residuals by the measurement uncertainty.
-    residuals.applyOnTheLeft(sqrt_information_.template cast<T>());
-
     // Add the regu term
     Eigen::Matrix<T, 3, 1> n_a_global = q_a.toRotationMatrix() * nvec_a_.template cast<T>();
     Eigen::Matrix<T, 3, 1> n_b_global = q_b.toRotationMatrix() * nvec_b_.template cast<T>();
-    T e_L2 = lambda_ * (1.0 - n_a_global[0] * n_b_global[0] - n_a_global[1] * n_b_global[1] - n_a_global[2] * n_b_global[2]);
+    residuals[6] = sqrt(lambda_ * (1.0 - n_a_global[0] * n_b_global[0] - n_a_global[1] * n_b_global[1] - n_a_global[2] * n_b_global[2]));
 
-    residuals[0] += e_L2;
-    residuals[1] += e_L2;
-    residuals[2] += e_L2;
-    residuals[3] += e_L2;
-    residuals[4] += e_L2;
-    residuals[5] += e_L2;
+    // Scale the residuals by the measurement uncertainty.
+    residuals.applyOnTheLeft(sqrt_information_.template cast<T>());
 
     return true;
   }
 
   static ceres::CostFunction* Create(const Pose3d& t_ab_measured,
-                                     const Eigen::Matrix<double, 6, 6>& sqrt_information,
+                                     const Eigen::Matrix<double, 7, 7>& sqrt_information,
                                      const Eigen::Vector3d nv_a,
                                      const Eigen::Vector3d nv_b,
                                      const double lambda)
   {
-    return new ceres::AutoDiffCostFunction<PoseGraph3dErrorTerm, 6, 3, 4, 3, 4>(
+    return new ceres::AutoDiffCostFunction<PoseGraph3dErrorTerm, 7, 3, 4, 3, 4>(
               new PoseGraph3dErrorTerm(t_ab_measured, sqrt_information, nv_a, nv_b, lambda));
   }
 
@@ -210,7 +203,7 @@ class PoseGraph3dErrorTerm
   // The measurement for the position of B relative to A in the A frame.
   const Pose3d t_ab_measured_;
   // The square root of the measurement information matrix.
-  const Eigen::Matrix<double, 6, 6> sqrt_information_;
+  const Eigen::Matrix<double, 7, 7> sqrt_information_;
   // Norm vec
   const Eigen::Vector3d nvec_a_, nvec_b_;
   // L2 strength

@@ -15,6 +15,7 @@
 #define foreach BOOST_FOREACH
 
 #include <pcl/io/pcd_io.h>
+#include <pcl/io/ply_io.h>
 #include <pcl/point_cloud.h>
 #include <pcl/common/common.h>
 #include <pcl_ros/transforms.h>
@@ -250,9 +251,23 @@ int main(int argc, char** argv)
     std::cout << "Number of scan points: " << dst.size() << "\n";
     std::cout << "Number of map points: " << map.size() << "\n";
     std::cout << "(" << x << ", " << y << ", " << z << ", " << roll << ", " << pitch << ", " << yaw << ")\n";
-    // std::cout << "Transformation Matrix: \n";
-    // std::cout << crnt_transform.matrix() << std::endl;
+    std::cout << "Transformation Matrix: \n";
+    std::cout << crnt_transform.matrix() << std::endl;
     std::cout << "---------------------------------------" << std::endl;
+
+    if(true) // to use wavelab mapping here
+    {
+      static int num = 1;
+      char numStrScan[30];
+      char numStrPose[30];
+      sprintf(numStrScan, "test_data/scans/%04d.ply", num);
+      sprintf(numStrPose, "test_data/poses/%04d.csv", num);
+      pcl::io::savePLYFileBinary(std::string(numStrScan), src);
+      std::ofstream out_stream;
+      out_stream.open(std::string(numStrPose));
+      out_stream << crnt_transform.matrix() << std::endl;
+      num++;
+    }
 
     // Update prev values
     prev_transform = crnt_transform;

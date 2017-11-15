@@ -53,6 +53,7 @@
 // Here are the functions I wrote. De-comment to use
 #define TILE_WIDTH 35 // Maximum range of LIDAR 32E is 70m
 #define MY_EXTRACT_SCANPOSE // do not use this, this is to extract scans and poses to close loop
+// #define LIMIT_HEIGHT 3.5 // filter out high points when aligning
 static int add_scan_number = 1; // added frame count
 
 #ifdef MY_EXTRACT_SCANPOSE
@@ -278,8 +279,19 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   }
 
   correctLIDARscan(scan, relative_pose_tf, secs);
-
   pcl::PointCloud<pcl::PointXYZI>::Ptr scan_ptr(new pcl::PointCloud<pcl::PointXYZI>(scan));
+
+  #ifdef LIMIT_HEIGHT
+  pcl::PointCloud<pcl::PointXYZI> src;
+  for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = scan.begin(); item != scan.end(); item++)
+  {
+    if(item->z < LIMIT_HEIGHT)
+    {
+      src.push_back(*item);
+    }
+  }
+  pcl::PointCloud<pcl::PointXYZI>::Ptr src_ptr(new pcl::PointCloud<pcl::PointXYZI>(src));
+  #endif // LIMIT_HEIGHT
 
   // Add initial point cloud to velodyne_map
   if(initial_scan_loaded == 0)
@@ -300,7 +312,11 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   // Apply voxelgrid filter
   pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_filter;
   voxel_grid_filter.setLeafSize(voxel_leaf_size, voxel_leaf_size, voxel_leaf_size);
+  #ifdef LIMIT_HEIGHT
+  voxel_grid_filter.setInputCloud(src_ptr);
+  #else
   voxel_grid_filter.setInputCloud(scan_ptr);
+  #endif // LIMIT_HEIGHT
   voxel_grid_filter.filter(*filtered_scan_ptr);
 
   pcl::PointCloud<pcl::PointXYZI>::Ptr local_map_ptr(new pcl::PointCloud<pcl::PointXYZI>(local_map));
@@ -478,7 +494,11 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   current_scan_pub.publish(*scan_msg_ptr);
 
   pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_tmp_ptr(new pcl::PointCloud<pcl::PointXYZI>());
+  #ifdef LIMIT_HEIGHT
+  pcl::transformPointCloud(src, *transformed_tmp_ptr, t_localizer);
+  #else
   pcl::transformPointCloud(tmp, *transformed_tmp_ptr, t_localizer);
+  #endif // LIMIT_HEIGHT
   sensor_msgs::PointCloud2::Ptr tmp_msg_ptr(new sensor_msgs::PointCloud2);
   pcl::toROSMsg(*transformed_tmp_ptr, *tmp_msg_ptr);
   tmp_msg_ptr->header.frame_id = "map";

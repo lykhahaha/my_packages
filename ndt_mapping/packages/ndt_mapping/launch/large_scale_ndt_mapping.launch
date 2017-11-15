@@ -2,16 +2,16 @@
 <launch>
 
   <!-- send table.xml to param server -->
-  <arg name="bag" default="/home/zwu/LIDAR-DATA/8sep-around-pana.bag" />
-  <arg name="start_time" default="75" /> <!-- all timings are in seconds -->
-  <arg name="play_duration" default="25" /> <!-- set negative to play all -->
+  <arg name="bag" default="/home/zwu/LIDAR-DATA/8sep-near-pana.bag" />
+  <arg name="start_time" default="0" /> <!-- all timings are in seconds -->
+  <arg name="play_duration" default="-1" /> <!-- set negative to play all -->
   <arg name="namespace" default="" /> <!-- unused for now -->
-  <arg name="resolution" default="4.0"/> 
-  <arg name="step_size" default="0.01"/>
+  <arg name="resolution" default="4.5"/> 
+  <arg name="step_size" default="0.05"/>
   <arg name="transformation_epsilon" default="0.0001"/>
-  <arg name="max_iteration" default="50" />
-  <arg name="voxel_leaf_size" default="0.5" />
-  <arg name="min_scan_range" default="5" />
+  <arg name="max_iteration" default="100" />
+  <arg name="voxel_leaf_size" default="1.0" />
+  <arg name="min_scan_range" default="3.5" />
   <arg name="min_add_scan_shift" default="0.5" />  
   <arg name="min_add_scan_yaw_diff" default="0.005" />
   

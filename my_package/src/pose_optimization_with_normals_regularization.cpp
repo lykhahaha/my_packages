@@ -171,7 +171,7 @@ bool optimizeEssentialGraphWithL2(const VectorofPoses &NonCorrectedSim3,
   {
     const Constraint3d& constraint = *constraints_iter;
     // const Constraint3d& constraint = constraints[i];
-    const Eigen::Matrix<double, 6, 6> sqrt_information = constraint.information.llt().matrixL();
+    const Eigen::Matrix<double, 7, 7> sqrt_information = constraint.information.llt().matrixL();
     // Ceres will take ownership of the pointer.
     ceres::CostFunction* cost_function = PoseGraph3dErrorTerm::Create(constraint.t_be,
                                                                       sqrt_information,
@@ -225,7 +225,7 @@ int main(int argc, char** argv)
   double L2_strength = 1.0;
   if(argc >= 2)
   {
-    L2_strength = std::stod(argv[1]);
+    L2_strength = std::fabs(std::stod(argv[1]));
   }
   std::cout << "lambda = " << L2_strength << std::endl;
   std::string bagfile = "/home/zwu/LIDAR-DATA/3oct-around-pana1.bag";
@@ -420,10 +420,12 @@ int main(int argc, char** argv)
   
   // Re-map with optimized pose
   #ifdef OUTPUT_POSE  // Also, output pose.txt 
-  std::ofstream out_stream;
+  std::ofstream out_stream, out_nv_stream;
   std::string out_file = "optimized_pose.csv";
   out_stream.open(out_file);
+  out_nv_stream.open("global_optimized_nv.csv");
   out_stream << "key,sequence,sec,nsec,x,y,z,roll,pitch,yaw" << std::endl;
+  out_nv_stream << "key,sequence,sec,nsec,x,y,z,error,x',y',z',error'" << std::endl;
   #endif // OUTPUT_POSE
 
   std::cout << "Re-mapping... " << std::endl;
@@ -449,7 +451,7 @@ int main(int argc, char** argv)
     // Correct scan
     ros::Time crnt_time(sec_list[i], nsec_list[i]);
     
-    if(i == 0)
+    if(i == 0) // first scan?
     {
       prev_transform = crnt_transform;
       interval = 0.1; // dummy value
@@ -474,6 +476,25 @@ int main(int argc, char** argv)
     #ifdef OUTPUT_POSE // to .txt
     out_stream << key_list[i] << "," << seq_list[i] << "," << sec_list[i] << "," << nsec_list[i] << ","
                << x << "," << y << "," << z << "," << roll << "," << pitch << "," << yaw << std::endl;
+    // output global nv
+    Eigen::Vector3d glb_nv_orig = (non_corrected_sim3[i].q.toRotationMatrix() * vector_of_normal_vectors[i]).normalized();
+    Eigen::Vector3d glb_nv = (corrected_sim3[i].q.toRotationMatrix() * vector_of_normal_vectors[i]).normalized();
+    if(i == 0)
+    {
+      out_nv_stream << key_list[i] << "," << seq_list[i] << "," << sec_list[i] << "," << nsec_list[i] << ","
+                    << glb_nv_orig[0] << "," << glb_nv_orig[1] << "," << glb_nv_orig[2] << ",,"
+                    << glb_nv[0] << "," << glb_nv[1] << "," << glb_nv[2] << "," << std::endl;
+    }
+    else
+    {
+      Eigen::Vector3d glb_nv_orig_prev = (non_corrected_sim3[i-1].q.toRotationMatrix() * vector_of_normal_vectors[i-1]).normalized();
+      Eigen::Vector3d glb_nv_prev = (corrected_sim3[i-1].q.toRotationMatrix() * vector_of_normal_vectors[i-1]).normalized();
+      double error_orig = 1.0 - glb_nv_orig[0]*glb_nv_orig_prev[0] - glb_nv_orig[1]*glb_nv_orig_prev[1] - glb_nv_orig[2]*glb_nv_orig_prev[2];
+      double error = 1.0 - glb_nv[0]*glb_nv_prev[0] - glb_nv[1]*glb_nv_prev[1] - glb_nv[2]*glb_nv_prev[2];
+      out_nv_stream << key_list[i] << "," << seq_list[i] << "," << sec_list[i] << "," << nsec_list[i] << ","
+                    << glb_nv_orig[0] << "," << glb_nv_orig[1] << "," << glb_nv_orig[2] << "," << error_orig << ","
+                    << glb_nv[0] << "," << glb_nv[1] << "," << glb_nv[2] << "," << error << std::endl;
+    }
     #endif // OUTPUT_POSE
 
     // Update prev values
