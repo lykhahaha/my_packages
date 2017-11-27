@@ -21,8 +21,6 @@
 #include <pcl_ros/transforms.h>
 #include <pcl_conversions/pcl_conversions.h>
 
-// #define WRITE_CORRECTED_SCAN_TO_BAG
-
 struct pose
 {
   double x;
@@ -117,6 +115,7 @@ int main(int argc, char** argv)
 {
   // Initiate and get csv file
   ros::init(argc, argv, "submap_merger");
+  std::cout << "Usage: build map using pose generated from loam_velodyne." << std::endl;
 
   if(argc < 2)
   {
@@ -125,7 +124,7 @@ int main(int argc, char** argv)
     return -1;
   }
   std::string bagfile = argv[1];
-  std::string bagtopic = "/points_raw";
+  std::string bagtopic = "/velodyne_points";
   std::cout << "Reading bag: " << bagfile << " [topic: " << bagtopic << "]... " << std::flush;
   rosbag::Bag bag(bagfile, rosbag::bagmode::Read);
   std::vector<std::string> reading_topics;
@@ -133,26 +132,25 @@ int main(int argc, char** argv)
   rosbag::View view(bag, rosbag::TopicQuery(reading_topics));
   std::cout << "Done." << std::endl;
 
-  std::string csvfile = "map_pose.csv";
+  std::string csvfile = "loam-integrated_to_init.csv";
   std::cout << "Reading " << csvfile << " in the current directory.\n";
   std::cout << "Please ensure that the format of the csv file is:" << std::endl;
-  std::cout << "\t{key, sequence, sec, nsec, x, y, z, roll, pitch, yaw}" << std::endl; 
+  std::cout << "\t{sequence, sec, nsec, x, y, z, roll, pitch, yaw}" << std::endl; 
   std::ifstream csv_stream(csvfile);
-
-  #ifdef WRITE_CORRECTED_SCAN_TO_BAG
-  rosbag::Bag corrected_bag;
-  corrected_bag.open("corrected_scan.bag", rosbag::bagmode::Write);
-  #endif // WRITE_CORRECTED_SCAN_TO_BAG
 
   // Place-holder for variables
   std::string line, key_str, seq_str, sec_str, nsec_str, x_str, y_str, z_str, roll_str, pitch_str, yaw_str;
   pcl::PointCloud<pcl::PointXYZI> map;
-  unsigned int seq, key;
+  unsigned int seq;
   double x, y, z, roll, pitch, yaw;
   Eigen::Affine3d prev_transform;
   ros::Time prev_time;
   bool isFirstScan = true;
   bool isGetLine = false;
+
+  // Custom transform for loam_velodyne
+  Eigen::Affine3d loam_transform;
+  pcl::getTransformation(0, 0, 0, -1.57079632679, 1.57079632679, 0, loam_transform);
 
   getline(csv_stream, line); // to skip header line
   std::cout << "Finished. Starting merging submaps..." << std::endl;
@@ -170,14 +168,13 @@ int main(int argc, char** argv)
 
     std::stringstream line_stream(line);
 
-    getline(line_stream, key_str, ',');
-    key = std::stod(key_str);
-
     getline(line_stream, seq_str, ',');
     seq = std::stod(seq_str);
+
     getline(line_stream, sec_str, ',');
     getline(line_stream, nsec_str, ',');
     ros::Time crnt_time(std::stod(sec_str), std::stod(nsec_str));
+
     getline(line_stream, x_str, ',');
     x = std::stod(x_str);
     getline(line_stream, y_str, ',');
@@ -199,13 +196,20 @@ int main(int argc, char** argv)
     }
     else // check whether the sequence match
     {
-      if(input_cloud->header.seq != seq)
+      // Cant check sequence for now
+      // if(input_cloud->header.seq != seq)
+      // {
+      //   std::cout << "Info: input_cloud->header.seq != seq (" << input_cloud->header.seq << " != " << seq << ")" << std::endl;
+      //   continue;
+      // }
+      // But we can use time stamp to skip
+      ros::Duration time_discrepancy = crnt_time - input_cloud->header.stamp;
+      if(time_discrepancy.toSec() > 0.1)
       {
-        std::cout << "Info: input_cloud->header.seq != seq (" << input_cloud->header.seq << " != " << seq << ")" << std::endl;
+        std::cout << "Info: skipping into the future to match pose data." << std::endl;
         continue;
       }
-
-      if(input_cloud->header.stamp != crnt_time)
+      else if(std::fabs(time_discrepancy.toSec()) > 0.02)
       {
         std::cout << "Error: input_cloud->header.stamp != crnt_time" << std::endl;
         std::cout << "(" << input_cloud->header.stamp << " != " << crnt_time << ")" << std::endl;
@@ -216,6 +220,11 @@ int main(int argc, char** argv)
     // Create transformation matrix
     Eigen::Affine3d crnt_transform, rel_transform;
     pcl::getTransformation(x, y, z, roll, pitch, yaw, crnt_transform);
+    std::cout << "B4: " << std::endl;
+    std::cout << crnt_transform.matrix() << std::endl;
+    crnt_transform = loam_transform.inverse() * crnt_transform;
+    std::cout << "Aft: " << std::endl;
+    std::cout << crnt_transform.matrix() << std::endl;
     double interval;
     if(isFirstScan)
     {
@@ -225,55 +234,32 @@ int main(int argc, char** argv)
       isFirstScan = false;
     }
     else
-    {
+    {   
+      // Skip unadded scan
+      double prev_x, prev_y, prev_z, prev_roll, prev_pitch, prev_yaw;
+      pcl::getTranslationAndEulerAngles(prev_transform, 
+                                        prev_x, prev_y, prev_z, 
+                                        prev_roll, prev_pitch, prev_yaw);
+
+      double diff_translation = sqrt(pow((x - prev_x), 2.0) + pow((z - prev_z), 2.0) + pow((z - prev_z), 2.0));
+      double diff_rotation = yaw - prev_yaw;
+      if(diff_translation < 0.5 && std::fabs(diff_rotation) < 0.01)
+      {
+        std::cout << "Skipping unadded scan." << std::endl;
+        prev_transform = crnt_transform;
+        prev_time = crnt_time;
+        isGetLine = false;
+        continue;
+      }
+      // else, proceed
       interval = (crnt_time - prev_time).toSec();
       rel_transform = prev_transform.inverse() * crnt_transform;
     }
-#ifdef WRITE_CORRECTED_SCAN_TO_BAG
-    // Correct point cloud first
-    pcl::PointCloud<pcl::PointXYZI> src, dst;
-    pcl::fromROSMsg(*input_cloud, src);
-    correctLIDARscan(src, rel_transform, interval);
-
-    // Add to bag regardless of key
-    sensor_msgs::PointCloud2::Ptr scan_msg_ptr(new sensor_msgs::PointCloud2);
-    pcl::toROSMsg(src, *scan_msg_ptr);
-    scan_msg_ptr->header.seq = input_cloud->header.seq;
-    scan_msg_ptr->header.stamp = input_cloud->header.stamp;
-    scan_msg_ptr->header.frame_id = input_cloud->header.frame_id;
-    corrected_bag.write("/velodyne_points", 
-                        ros::Time(input_cloud->header.stamp.sec, input_cloud->header.stamp.nsec), 
-                        *scan_msg_ptr);
-
-    // Skip unadded scan (has key = 0)
-    if(key == 0)
-    {
-      std::cout << "Skipping unadded scan." << std::endl;
-      prev_transform = crnt_transform;
-      prev_time = crnt_time;
-      isGetLine = false;
-      continue;
-    }
-
-    // Transform the corrected pointcloud
-    pcl::transformPointCloud(src, dst, crnt_transform);
-    // Add to map
-    map += dst;
-#else
-    // Skip unadded scan (has key = 0)
-    if(key == 0)
-    {
-      std::cout << "Skipping unadded scan." << std::endl;
-      prev_transform = crnt_transform;
-      prev_time = crnt_time;
-      isGetLine = false;
-      continue;
-    }
 
     // Correct point cloud first
     pcl::PointCloud<pcl::PointXYZI> src, dst;
     pcl::fromROSMsg(*input_cloud, src);
-    correctLIDARscan(src, rel_transform, interval);
+    // correctLIDARscan(src, rel_transform, interval);
 
     // Transform the corrected pointcloud
     pcl::transformPointCloud(src, dst, crnt_transform);
@@ -282,10 +268,7 @@ int main(int argc, char** argv)
     // Add to map
     map += dst;
 
-#endif // WRITE_CORRECTED_SCAN_TO_BAG
-
     // Show output
-    std::cout << "Number: " << key << "\n";
     std::cout << "Sequence: " << seq << "\n";
     std::cout << "Number of scan points: " << dst.size() << "\n";
     std::cout << "Number of map points: " << map.size() << "\n";
@@ -293,20 +276,6 @@ int main(int argc, char** argv)
     std::cout << "Transformation Matrix: \n";
     std::cout << crnt_transform.matrix() << std::endl;
     std::cout << "---------------------------------------" << std::endl;
-
-    if(false) // to use wavelab mapping here
-    {
-      static int num = 1;
-      char numStrScan[30];
-      char numStrPose[30];
-      sprintf(numStrScan, "test_data/scans/%04d.ply", num);
-      sprintf(numStrPose, "test_data/poses/%04d.csv", num);
-      pcl::io::savePLYFileBinary(std::string(numStrScan), src);
-      std::ofstream out_stream;
-      out_stream.open(std::string(numStrPose));
-      out_stream << crnt_transform.matrix() << std::endl;
-      num++;
-    }
 
     // Update prev values
     prev_transform = crnt_transform;

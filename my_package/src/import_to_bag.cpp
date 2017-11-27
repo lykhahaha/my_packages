@@ -37,7 +37,7 @@ int main(int argc, char** argv)
   std::cout << "Also ensure that ONLY .txt files with the correct format are in txts/ directory." << std::endl;
   // Output bag file
   rosbag::Bag bag;
-  bag.open("bags/today.bag", rosbag::bagmode::Write);
+  bag.open("bags/15nov.bag", rosbag::bagmode::Write);
 
   // Timestamp data
   std::ifstream time_stamp_stream;

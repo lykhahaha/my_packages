@@ -179,8 +179,16 @@ class PoseGraph3dErrorTerm
     residuals.template block<3, 1>(3, 0) = T(2.0) * delta_q.vec();
 
     // Add the regu term
-    Eigen::Matrix<T, 3, 1> n_a_global = q_a.toRotationMatrix() * nvec_a_.template cast<T>();
-    Eigen::Matrix<T, 3, 1> n_b_global = q_b.toRotationMatrix() * nvec_b_.template cast<T>();
+    // Eigen::Vector3d nvec_a_xz(nvec_a_[0], 0., nvec_a_[2]);
+    // nvec_a_xz.normalize();
+    // Eigen::Vector3d nvec_b_xz(nvec_b_[0], 0., nvec_b_[2]);
+    // nvec_b_xz.normalize();
+    // Eigen::Matrix<T, 3, 1> n_a_global = (q_a.toRotationMatrix() * nvec_a_xz.template cast<T>()).normalized();
+    // Eigen::Matrix<T, 3, 1> n_b_global = (q_b.toRotationMatrix() * nvec_b_xz.template cast<T>()).normalized();
+    Eigen::Matrix<T, 3, 1> n_a_global = (q_a.toRotationMatrix() * nvec_a_.template cast<T>()).normalized();
+    Eigen::Matrix<T, 3, 1> n_b_global = (q_b.toRotationMatrix() * nvec_b_.template cast<T>()).normalized();
+    // std::cout << "Vec" << k << ": [" << n_a_global[0] << ",,," << n_a_global[1] << ",,," << n_a_global[2] << "]" << std::endl;
+
     residuals[6] = sqrt(lambda_ * (1.0 - n_a_global[0] * n_b_global[0] - n_a_global[1] * n_b_global[1] - n_a_global[2] * n_b_global[2]));
 
     // Scale the residuals by the measurement uncertainty.

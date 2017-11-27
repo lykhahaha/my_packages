@@ -477,16 +477,26 @@ int main(int argc, char** argv)
     out_stream << key_list[i] << "," << seq_list[i] << "," << sec_list[i] << "," << nsec_list[i] << ","
                << x << "," << y << "," << z << "," << roll << "," << pitch << "," << yaw << std::endl;
     // output global nv
+    // Eigen::Vector3d nvec_a_xz(vector_of_normal_vectors[i][0], 0., vector_of_normal_vectors[i][2]);
+    // nvec_a_xz.normalize();
+    // Eigen::Vector3d glb_nv_orig = (non_corrected_sim3[i].q.toRotationMatrix() * nvec_a_xz).normalized();
+    // Eigen::Vector3d glb_nv = (corrected_sim3[i].q.toRotationMatrix() * nvec_a_xz).normalized();
+
     Eigen::Vector3d glb_nv_orig = (non_corrected_sim3[i].q.toRotationMatrix() * vector_of_normal_vectors[i]).normalized();
     Eigen::Vector3d glb_nv = (corrected_sim3[i].q.toRotationMatrix() * vector_of_normal_vectors[i]).normalized();
     if(i == 0)
     {
       out_nv_stream << key_list[i] << "," << seq_list[i] << "," << sec_list[i] << "," << nsec_list[i] << ","
-                    << glb_nv_orig[0] << "," << glb_nv_orig[1] << "," << glb_nv_orig[2] << ",,"
+                    << glb_nv_orig[0] << "," << glb_nv_orig[1] << "," << glb_nv_orig[2] << ",," // <--- yes, double comma here
                     << glb_nv[0] << "," << glb_nv[1] << "," << glb_nv[2] << "," << std::endl;
     }
     else
     {
+      // Eigen::Vector3d nvec_b_xz(vector_of_normal_vectors[i-1][0], 0., vector_of_normal_vectors[i-1][2]);
+      // nvec_b_xz.normalize();
+      // Eigen::Vector3d glb_nv_orig_prev = (non_corrected_sim3[i-1].q.toRotationMatrix() * nvec_b_xz).normalized();
+      // Eigen::Vector3d glb_nv_prev = (corrected_sim3[i-1].q.toRotationMatrix() * nvec_b_xz).normalized();
+      
       Eigen::Vector3d glb_nv_orig_prev = (non_corrected_sim3[i-1].q.toRotationMatrix() * vector_of_normal_vectors[i-1]).normalized();
       Eigen::Vector3d glb_nv_prev = (corrected_sim3[i-1].q.toRotationMatrix() * vector_of_normal_vectors[i-1]).normalized();
       double error_orig = 1.0 - glb_nv_orig[0]*glb_nv_orig_prev[0] - glb_nv_orig[1]*glb_nv_orig_prev[1] - glb_nv_orig[2]*glb_nv_orig_prev[2];

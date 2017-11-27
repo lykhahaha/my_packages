@@ -181,6 +181,10 @@ add_executable(submap_merger src/submap_merger.cpp)
 add_dependencies(submap_merger ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg)
 target_link_libraries(submap_merger ${catkin_LIBRARIES})
 
+add_executable(async_submap_merger src/async_submap_merger.cpp)
+add_dependencies(async_submap_merger ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg)
+target_link_libraries(async_submap_merger ${catkin_LIBRARIES})
+
 add_executable(ply_colorizer src/ply_colorizer.cpp)
 add_dependencies(ply_colorizer ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg)
 target_link_libraries(ply_colorizer ${catkin_LIBRARIES})

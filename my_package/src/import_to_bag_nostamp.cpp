@@ -28,12 +28,12 @@ instead of putting the directory as an argument because I have not implement tha
 int main(int argc, char** argv)
 {
   // Heads-up reminder for usage
-  std::cout << "INFO: Reading data in the current directory." << std::endl;
+  std::cout << "INFO: Reading data in the txts/ directory." << std::endl;
   std::cout << "Please ensure that bags/ and pcds/ directory ARE CREATED in this directory." << std::endl;
-  std::cout << "Also ensure that ONLY .txt files with the correct format are in this directory." << std::endl;
+  std::cout << "Also ensure that ONLY .txt files with the correct format are in txts/ directory." << std::endl;
   // Output bag file
   rosbag::Bag bag;
-  bag.open("bags/today.bag", rosbag::bagmode::Write);
+  bag.open("bags/15nov.bag", rosbag::bagmode::Write);
   // Some fake data for pointcloud
   int seq = 1;
   int32_t sec = 1504851231; // this should be around 8 sep, noon
@@ -41,12 +41,13 @@ int main(int argc, char** argv)
   std::string frame_id = "velodyne";
 
   // Get all file in the specified directory
-  for(int file_number = 1, file_end = 1463; file_number <= file_end; file_number++)
+  for(int file_number = 1, file_end = 726; file_number <= file_end; file_number++)
   {
-    std::string filename = "Lidar" + std::to_string(file_number) + ".txt";
+    std::string filename = std::to_string(file_number) + ".txt";
 
     std::ifstream in_stream;  
-    in_stream.open(filename);
+    in_stream.open("txts/" + filename);
+    std::cout << "Reading: " << filename << std::endl;
 
     // Place-holder for variables
     pcl::PointCloud<pcl::PointXYZI> scan; 
@@ -83,9 +84,9 @@ int main(int argc, char** argv)
     }
     // Write to pcd file
     std::string out_filename = filename;
-    pcl::io::savePCDFileBinary("pcds/" + out_filename + ".pcd", scan);
     std::cout << "Saved [" << scan.size() << " points, " << points_skipped << " skipped] points to pcds/" << out_filename << ".pcd" << std::endl;
     std::cout << "---------------------------------------" << std::endl;
+    pcl::io::savePCDFileBinary("pcds/" + out_filename + ".pcd", scan);
 
     // Write to bag file
     sensor_msgs::PointCloud2::Ptr scan_msg_ptr(new sensor_msgs::PointCloud2);

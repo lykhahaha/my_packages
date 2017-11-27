@@ -109,12 +109,12 @@ bool findRoadSurfaceNormalVector(const pcl::PointCloud<pcl::PointXYZI> cloud,
   
   // Optimize found plane, ref: https://gist.github.com/ialhashim/0a2554076a6cf32831ca
   // Copy coordinates to matrix in Eigen format
-  plane_cloud.clear();
+  // plane_cloud.clear();
   Eigen::Matrix< Eigen::Vector3d::Scalar, Eigen::Dynamic, Eigen::Dynamic > coord(3, inlier_indices.size());
   for(uint32_t i = 0, i_end = inlier_indices.size(); i < i_end; ++i)
   {
     coord.col(i) = Eigen::Vector3d(cloud.points[inlier_indices[i]].x, cloud.points[inlier_indices[i]].y, cloud.points[inlier_indices[i]].z);
-    plane_cloud.push_back(cloud.points[inlier_indices[i]]); // also push to pointcloud to visualize later
+    // plane_cloud.push_back(cloud.points[inlier_indices[i]]); // also push to pointcloud to visualize later
   }
 
   // Calculate centroid
@@ -130,6 +130,18 @@ bool findRoadSurfaceNormalVector(const pcl::PointCloud<pcl::PointXYZI> cloud,
   auto svd = coord.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV);
   plane_normal_vector = svd.matrixU().rightCols<1>(); // normal-vector-of-plane
 
+  // From the optimized model, re-adjust the points in ground plane
+  plane_cloud.clear();
+  for(uint32_t i = 0, i_end = cloud.size(); i < i_end; i++)
+  {
+    Eigen::Vector3d P(cloud.points[i].x, cloud.points[i].y, cloud.points[i].z);
+    double point2plane_dist = std::fabs(plane_normal_vector.dot(P - centroid));
+    if(point2plane_dist < DIST_THRESHOLD || P[2] < centroid[2])
+    {
+      plane_cloud.push_back(cloud.points[i]);
+    }
+  }
+
   // Fix the vector to point upward
   if(plane_normal_vector[2] < 0)
   {
@@ -137,7 +149,7 @@ bool findRoadSurfaceNormalVector(const pcl::PointCloud<pcl::PointXYZI> cloud,
   }
   std::cout << "Result:\n";
   std::cout << "\t^n = [" << plane_normal_vector[0] << "," << plane_normal_vector[1] << "," << plane_normal_vector[2] << "]\n";
-  std::cout << "\tPlane size: " << inlier_indices.size() << std::endl;
+  std::cout << "\tPlane size: " << plane_cloud.size() << std::endl;
   return true;
 }
 
@@ -201,7 +213,7 @@ int main(int argc, char** argv)
 
 #else //read from a bagfile instead, also output csv data
   ros::Publisher vec_pub = nh.advertise<visualization_msgs::Marker>("normal_vector", 0);
-  // ros::Rate r(5); // decrease rate as to view in rviz
+  ros::Rate r(10); // decrease rate as to view in rviz
   if(argc < 2)
   {
     std::cout << "Please indicate the bag file." << std::endl;
@@ -289,7 +301,7 @@ int main(int argc, char** argv)
       marker.color.b = 0.0;
       vec_pub.publish(marker);
 
-      // r.sleep();
+      r.sleep();
     }
   }
 #endif // READ_PCD
