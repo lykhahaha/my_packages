@@ -41,24 +41,21 @@
 #include <pcl_conversions/pcl_conversions.h>
 
 #ifdef USE_FAST_PCL
-  #include <fast_pcl/registration/ndt.h>
-  #include <fast_pcl/filters/voxel_grid.h>
+#include <fast_pcl/registration/ndt.h>
+#include <fast_pcl/filters/voxel_grid.h>
 #else
-  #include <pcl/registration/ndt.h>
-  #include <pcl/filters/voxel_grid.h>
+#include <pcl/registration/ndt.h>
+#include <pcl/filters/voxel_grid.h>
 #endif
 
-#ifdef USE_GPU_PCL
-#include <fast_pcl/ndt_gpu/NormalDistributionsTransform.h>
-#endif
-
-// #include <lidar_pcl/lidar_pcl.h>
+// perception_oru packages
+#include <ndt_registration/ndt_matcher_d2d.h>
+#include <ndt_map/pointcloud_utils.h>
 
 // Here are the functions I wrote. De-comment to use
 #define TILE_WIDTH 35 // Maximum range of LIDAR 32E is 70m
 #define MY_EXTRACT_SCANPOSE // do not use this, this is to extract scans and poses to close loop
-// #define LIMIT_HEIGHT 3.0 // filter out high points when aligning
-// #define CORRECT_SCAN_DEBUG
+// #define LIMIT_HEIGHT 3.5 // filter out high points when aligning
 static int add_scan_number = 1; // added frame count
 
 #ifdef MY_EXTRACT_SCANPOSE
@@ -132,11 +129,7 @@ static pcl::PointCloud<pcl::PointXYZI> local_map;
 static std::mutex mtx;
 static Key local_key, previous_key;
 
-#ifdef USE_GPU_PCL
-static gpu::GNormalDistributionsTransform gpu_ndt;
-#else
 static pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI> ndt;
-#endif
 // Default values
 static int max_iter = 300;       // Maximum iterations
 static float ndt_res = 2.8;      // Resolution
@@ -150,7 +143,6 @@ static double min_add_scan_shift = 1.0;
 static double min_add_scan_yaw_diff = 0.005;
 static std::string _bag_file;
 static std::string work_directory;
-static std::string _namespace;
 
 // Leaf size of VoxelGrid filter.
 static double voxel_leaf_size = 0.1;
@@ -160,13 +152,11 @@ static ros::Publisher ndt_map_pub, current_scan_pub, original_scan_pub;
 static int initial_scan_loaded = 0;
 
 static double _tf_x, _tf_y, _tf_z, _tf_roll, _tf_pitch, _tf_yaw;
-static Eigen::Matrix4f tf_btol, tf_ltob;
+static Eigen::Matrix4d tf_btol, tf_ltob;
 
 static bool isMapUpdate = true;
 
 static double fitness_score;
-static bool has_converged;
-static int final_num_iteration;
 
 // File name get from time
 std::time_t process_begin = std::time(NULL);
@@ -266,8 +256,8 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>());
   tf::Quaternion q;
 
-  Eigen::Matrix4f t_localizer(Eigen::Matrix4f::Identity());
-  Eigen::Matrix4f t_base_link(Eigen::Matrix4f::Identity());
+  Eigen::Matrix4d t_localizer(Eigen::Matrix4d::Identity());
+  Eigen::Matrix4d t_base_link(Eigen::Matrix4d::Identity());
   tf::TransformBroadcaster br;
   tf::Transform transform;
 
@@ -293,27 +283,6 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   correctLIDARscan(scan, relative_pose_tf, secs);
   pcl::PointCloud<pcl::PointXYZI>::Ptr scan_ptr(new pcl::PointCloud<pcl::PointXYZI>(scan));
 
-  #ifdef LIMIT_HEIGHT
-  pcl::PointCloud<pcl::PointXYZI> src;
-  if(/*input->header.seq > 1780 &&*/ input->header.seq < 2300)
-    for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = scan.begin(); item != scan.end(); item++)
-    {
-      // Eigen::Vector3d p(item->x, item->y, item->z);
-      // Eigen::Vector3d f = relative_pose_tf.inverse() * p;
-      double point_azi = getYawAngle(item->x, item->y);
-      // std::cout << point
-      if(item->z < LIMIT_HEIGHT 
-         && ((point_azi < -20 && point_azi > -180) || (point_azi > 170)))
-         // && (point_azi > -20 && point_azi < 170))
-      {
-        src.push_back(*item);
-      }
-    }
-  else 
-    src = scan;
-  pcl::PointCloud<pcl::PointXYZI>::Ptr src_ptr(new pcl::PointCloud<pcl::PointXYZI>(src));
-  #endif // LIMIT_HEIGHT
-
   // Add initial point cloud to velodyne_map
   if(initial_scan_loaded == 0)
   {
@@ -331,35 +300,30 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
     return;
   }
   // Apply voxelgrid filter
-  pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_filter;
-  voxel_grid_filter.setLeafSize(voxel_leaf_size, voxel_leaf_size, voxel_leaf_size);
-  #ifdef LIMIT_HEIGHT
-  voxel_grid_filter.setInputCloud(src_ptr);
-  #else
-  voxel_grid_filter.setInputCloud(scan_ptr);
-  #endif // LIMIT_HEIGHT
-  voxel_grid_filter.filter(*filtered_scan_ptr);
+  // pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_filter;
+  // voxel_grid_filter.setLeafSize(voxel_leaf_size, voxel_leaf_size, voxel_leaf_size);
+  // voxel_grid_filter.setInputCloud(scan_ptr);
+  // voxel_grid_filter.filter(*filtered_scan_ptr);
 
+  *filtered_scan_ptr = scan;
   pcl::PointCloud<pcl::PointXYZI>::Ptr local_map_ptr(new pcl::PointCloud<pcl::PointXYZI>(local_map));
 
-#ifdef USE_GPU_PCL
-  gpu_ndt.setInputSource(filtered_scan_ptr);
-#else
-  ndt.setInputSource(filtered_scan_ptr);
-#endif
+  // D2D NDT starts here
+  double __res[] = {1, 1, 5, 4.5};
+  std::vector<double> resolutions (__res, __res+sizeof(__res)/sizeof(double));
+  lslgeneric::NDTMatcherD2D matcherD2D(false, false, resolutions);
+  Eigen::Transform<double, 3, Eigen::Affine, Eigen::ColMajor> d2d_transformation;
 
-  std::chrono::time_point<std::chrono::system_clock> t1 = std::chrono::system_clock::now();
-  if(isMapUpdate == true)
-  {
-  #ifdef USE_GPU_PCL
-    gpu_ndt.setInputTarget(local_map_ptr);
-  #else
-    ndt.setInputTarget(local_map_ptr);
-  #endif
-    isMapUpdate = false;
-  }
-  std::chrono::time_point<std::chrono::system_clock> t2 = std::chrono::system_clock::now();
-  double ndt_update_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
+  // ndt.setInputSource(filtered_scan_ptr);
+
+  // std::chrono::time_point<std::chrono::system_clock> t1 = std::chrono::system_clock::now();
+  // if (isMapUpdate == true)
+  // {
+  //   ndt.setInputTarget(local_map_ptr);
+  //   isMapUpdate = false;
+  // }
+  // std::chrono::time_point<std::chrono::system_clock> t2 = std::chrono::system_clock::now();
+  // double ndt_update_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
 
   guess_pose.x = previous_pose.x + diff_x;
   guess_pose.y = previous_pose.y + diff_y;
@@ -368,42 +332,59 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   guess_pose.pitch = previous_pose.pitch;
   guess_pose.yaw = previous_pose.yaw + diff_yaw;
 
-  Eigen::AngleAxisf init_rotation_x(guess_pose.roll, Eigen::Vector3f::UnitX());
-  Eigen::AngleAxisf init_rotation_y(guess_pose.pitch, Eigen::Vector3f::UnitY());
-  Eigen::AngleAxisf init_rotation_z(guess_pose.yaw, Eigen::Vector3f::UnitZ());
+  Eigen::AngleAxisd init_rotation_x(guess_pose.roll, Eigen::Vector3d::UnitX());
+  Eigen::AngleAxisd init_rotation_y(guess_pose.pitch, Eigen::Vector3d::UnitY());
+  Eigen::AngleAxisd init_rotation_z(guess_pose.yaw, Eigen::Vector3d::UnitZ());
 
-  Eigen::Translation3f init_translation(guess_pose.x, guess_pose.y, guess_pose.z);
+  Eigen::Translation3d init_translation(guess_pose.x, guess_pose.y, guess_pose.z);
 
-  Eigen::Matrix4f init_guess =
+  Eigen::Matrix4d init_guess =
       (init_translation * init_rotation_z * init_rotation_y * init_rotation_x).matrix() * tf_btol;
-  
-  t1 = std::chrono::system_clock::now();
-#ifdef USE_FAST_PCL
-  pcl::PointCloud<pcl::PointXYZI>::Ptr output_cloud(new pcl::PointCloud<pcl::PointXYZI>);
-  ndt.omp_align(*output_cloud, init_guess);
-  t_localizer = ndt.getFinalTransformation();
-  has_converged = ndt.hasConverged();
-  fitness_score = ndt.omp_getFitnessScore();
-  final_num_iteration = ndt.getFinalNumIteration();
-#elif defined USE_GPU_PCL
-  gpu_ndt.align(init_guess);
-  t_localizer = gpu_ndt.getFinalTransformation();
-  has_converged = gpu_ndt.hasConverged();
-  fitness_score = gpu_ndt.getFitnessScore();
-  final_num_iteration = gpu_ndt.getFinalNumIteration();
-#else
-  pcl::PointCloud<pcl::PointXYZI>::Ptr output_cloud(new pcl::PointCloud<pcl::PointXYZI>);
-  ndt.align(*output_cloud, init_guess);
-  t_localizer = ndt.getFinalTransformation();
-  has_converged = ndt.hasConverged();
-  fitness_score = ndt.getFitnessScore();
-  final_num_iteration = ndt.getFinalNumIteration();
-#endif
-  t2 = std::chrono::system_clock::now();
-  double ndt_align_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
-  
+
+  d2d_transformation = init_guess;
+
+  // convert pointxyzi to pointxyz here
+  pcl::PointCloud<pcl::PointXYZ> source_cloud, target_cloud;
+  for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = filtered_scan_ptr->begin(); item != filtered_scan_ptr->end(); item++)
+  {
+    pcl::PointXYZ p;
+    p.x = (double)item->x;
+    p.y = (double)item->y;
+    p.z = (double)item->z;
+    source_cloud.push_back(p);
+  }
+
+  for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = local_map_ptr->begin(); item != local_map_ptr->end(); item++)
+  {
+    pcl::PointXYZ p;
+    p.x = (double)item->x;
+    p.y = (double)item->y;
+    p.z = (double)item->z;
+    target_cloud.push_back(p);
+  }
+
+  if(matcherD2D.match(target_cloud, source_cloud, d2d_transformation, true))
+    std::cout << "I think D2D NDT succeeded..." << std::endl;
+
+  // pcl::PointCloud<pcl::PointXYZI>::Ptr output_cloud(new pcl::PointCloud<pcl::PointXYZI>);
+
+//   t1 = std::chrono::system_clock::now();
+// #ifdef USE_FAST_PCL
+//   ndt.omp_align(*output_cloud, init_guess);
+//   fitness_score = ndt.getFitnessScore();
+// #else
+//   ndt.align(*output_cloud, init_guess);
+//   fitness_score = ndt.getFitnessScore();
+// #endif
+//   t2 = std::chrono::system_clock::now();
+//   double ndt_align_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
+
+  // fitness_score = ndt.getFitnessScore();
+
+  t_localizer = d2d_transformation.matrix();
+
   t_base_link = t_localizer * tf_ltob;
-  
+
   tf::Matrix3x3 mat_l, mat_b;
 
   mat_l.setValue(static_cast<double>(t_localizer(0, 0)), static_cast<double>(t_localizer(0, 1)),
@@ -454,7 +435,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   
   // Calculate the shift between added_pos and current_pos
   double shift = sqrt(pow(current_pose.x - added_pose.x, 2.0) + pow(current_pose.y - added_pose.y, 2.0));
-  t1 = std::chrono::system_clock::now();
+  // t1 = std::chrono::system_clock::now();
   pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, t_localizer);
   if(shift >= min_add_scan_shift || std::fabs(diff_yaw) >= min_add_scan_yaw_diff)
   {
@@ -487,33 +468,9 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
                << std::endl;
   }
 #endif // MY_EXTRACT_SCANPOSE
-  t2 = std::chrono::system_clock::now();
-  double ndt_keyscan_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
 
-  // do a bit of evaluation on correctLidarScan() here
-  #ifdef CORRECT_SCAN_DEBUG
-  pose poseA, poseB;
-  double secA = secs;
-  double secB = (current_scan_time - previous_scan_time).toSec();
-  pcl::getTranslationAndEulerAngles(relative_pose_tf, // the rel_pose_tf used just now
-                                    poseA.x, poseA.y, poseA.z,
-                                    poseA.roll, poseA.pitch, poseA.yaw);
-  pcl::getTranslationAndEulerAngles(previous_pose_tf.inverse() * current_pose_tf, // this should be the next rel_pose_tf
-                                    poseB.x, poseB.y, poseB.z,
-                                    poseB.roll, poseB.pitch, poseB.yaw);
-  // poseA.x = poseA.x/secA; poseA.y = poseA.y/secA; poseA.z = poseA.z/secA;
-  // poseA.roll = poseA.roll/secA; poseA.pitch = poseA.pitch/secA; poseA.yaw = poseA.yaw/secA;
-  // poseB.x = poseB.x/secB; poseB.y = poseB.y/secB; poseB.z = poseB.z/secB;
-  // poseB.roll = poseB.roll/secB; poseB.pitch = poseB.pitch/secB; poseB.yaw = poseB.yaw/secB;
-  std::cout << "-----------------------------------------------------------------\n";
-  std::cout << "Correct scan evaluation: \n";
-  std::cout << "(" << (poseA.x - poseB.x) << ","
-                   << (poseA.y - poseB.y) << ","
-                   << (poseA.z - poseB.z) << ","
-                   << (poseA.roll - poseB.roll) << ","
-                   << (poseA.pitch - poseB.pitch) << ","
-                   << (poseA.yaw - poseB.yaw) << ")" << std::endl;
-  #endif // CORRECT_SCAN_DEBUG
+  // t2 = std::chrono::system_clock::now();
+  // double ndt_keyscan_time = std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0;
 
   // The rest of the code
   transform.setOrigin(tf::Vector3(current_pose.x, current_pose.y, current_pose.z));
@@ -558,7 +515,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   #ifdef LIMIT_HEIGHT
   pcl::transformPointCloud(src, *transformed_tmp_ptr, t_localizer);
   #else
-  pcl::transformPointCloud(scan, *transformed_tmp_ptr, t_localizer);
+  pcl::transformPointCloud(tmp, *transformed_tmp_ptr, t_localizer);
   #endif // LIMIT_HEIGHT
   sensor_msgs::PointCloud2::Ptr tmp_msg_ptr(new sensor_msgs::PointCloud2);
   pcl::toROSMsg(*transformed_tmp_ptr, *tmp_msg_ptr);
@@ -570,9 +527,9 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   std::cout << "Number of scan points: " << scan_ptr->size() << " points.\n";
   std::cout << "Number of filtered scan points: " << filtered_scan_ptr->size() << " points.\n";
   std::cout << "Local map: " << local_map.points.size() << " points.\n";
-  std::cout << "NDT has converged: " << has_converged << "\n";
+  std::cout << "NDT has converged: " << ndt.hasConverged() << "\n";
   std::cout << "Fitness score: " << fitness_score << "\n";
-  std::cout << "Number of iteration: " << final_num_iteration << "\n";
+  std::cout << "Number of iteration: " << ndt.getFinalNumIteration() << "\n";
   // std::cout << "Guessed posed: " << "\n";
   // std::cout << "(" << guess_pose.x << ", " << guess_pose.y << ", " << guess_pose.z << ", " << guess_pose.roll
   //           << ", " << guess_pose.pitch << ", " << guess_pose.yaw << ")\n";
@@ -583,9 +540,6 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   // std::cout << t_localizer << "\n";
   std::cout << "Shift: " << shift << "\n";
   std::cout << "Yaw Diff: " << diff_yaw << "\n";
-  std::cout << "Update target map took: " << ndt_update_time << "ms.\n";
-  std::cout << "NDT matching took: " << ndt_align_time << "ms.\n";
-  std::cout << "Updating map took: " << ndt_keyscan_time << "ms.\n";
   std::cout << "-----------------------------------------------------------------" << std::endl;
 }
 
@@ -639,7 +593,7 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
   char cbuffer[100];
   std::ofstream config_stream;
   std::strftime(cbuffer, 100, "%b%d-%H%M", pnow);
-  std::string config_file = "config@" + std::string(cbuffer) + ".txt";
+  std::string config_file = "D2Dconfig@" + std::string(cbuffer) + ".txt";
   config_stream.open(work_directory + config_file);
   std::strftime(cbuffer, 100, "%c", pnow);
 
@@ -669,6 +623,7 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
   config_stream << "Time taken: " << process_hr << " hr "
                                   << process_min << " min "
                                   << process_sec << " sec" << std::endl;
+
 
   // All the default sigint handler does is call shutdown()
   ros::shutdown();
@@ -725,18 +680,16 @@ int main(int argc, char** argv)
   pcl::getTransformation(0, 0, 0, 0, 0, 0, previous_pose_tf);
   pcl::getTransformation(0, 0, 0, 0, 0, 0, relative_pose_tf);
 
-  ros::init(argc, argv, "ndt_mapping", ros::init_options::NoSigintHandler);
+  ros::init(argc, argv, "d2d_ndt_mapping", ros::init_options::NoSigintHandler);
+
+  ros::NodeHandle nh;
+  signal(SIGINT, mySigintHandler);
   ros::NodeHandle private_nh("~");
 
-  const char *home_directory;
-  if((home_directory = getenv("HOME")) == NULL)
-    home_directory = getpwuid(getuid())->pw_dir; // get home directory
-
-  // get setting parameters in the launch files
+  // setting parameters
   private_nh.getParam("bag_file", _bag_file);
   private_nh.getParam("start_time", _start_time);
   private_nh.getParam("play_duration", _play_duration);
-  private_nh.getParam("namespace", _namespace);
   private_nh.getParam("resolution", ndt_res);
   private_nh.getParam("step_size", step_size);  
   private_nh.getParam("transformation_epsilon", trans_eps);
@@ -756,8 +709,6 @@ int main(int argc, char** argv)
   std::cout << "bag_file: " << _bag_file << std::endl;
   std::cout << "start_time: " << _start_time << std::endl;
   std::cout << "play_duration: " << _play_duration << std::endl;
-  if(_namespace.size() > 0)
-    std::cout << "namespace: " << _namespace << std::endl;
   std::cout << "ndt_res: " << ndt_res << std::endl;
   std::cout << "step_size: " << step_size << std::endl;
   std::cout << "trans_epsilon: " << trans_eps << std::endl;
@@ -769,50 +720,35 @@ int main(int argc, char** argv)
   std::cout << "(tf_x,tf_y,tf_z,tf_roll,tf_pitch,tf_yaw): (" << _tf_x << ", " << _tf_y << ", " << _tf_z << ", "
             << _tf_roll << ", " << _tf_pitch << ", " << _tf_yaw << ")\n" << std::endl;
 
-  ros::NodeHandle nh;
-  signal(SIGINT, mySigintHandler);
-
-  if(_namespace.size() > 0)
-  {
-    ndt_map_pub = nh.advertise<sensor_msgs::PointCloud2>(_namespace + "/local_map", 1000, true);
-    current_scan_pub = nh.advertise<sensor_msgs::PointCloud2>(_namespace + "/current_scan", 1, true);
-    original_scan_pub = nh.advertise<sensor_msgs::PointCloud2>(_namespace + "/source_scan", 1, true);
-    work_directory = std::string(home_directory) + "/ndt_custom/" + _namespace + "/";
-  }
-  else
-  {
-    ndt_map_pub = nh.advertise<sensor_msgs::PointCloud2>("/local_map", 1000, true);
-    current_scan_pub = nh.advertise<sensor_msgs::PointCloud2>("/current_scan", 1, true);
-    original_scan_pub = nh.advertise<sensor_msgs::PointCloud2>("/source_scan", 1, true);
-    work_directory = std::string(home_directory) + "/ndt_custom/";
-  }
-  std::cout << "Results are stored in: " << work_directory << std::endl;
-
-#ifdef USE_GPU_PCL
-  gpu_ndt.setTransformationEpsilon(trans_eps);
-  gpu_ndt.setStepSize(step_size);
-  gpu_ndt.setResolution(ndt_res);
-  gpu_ndt.setMaximumIterations(max_iter);
-#else
   ndt.setTransformationEpsilon(trans_eps);
   ndt.setStepSize(step_size);
   ndt.setResolution(ndt_res);
   ndt.setMaximumIterations(max_iter);
-#endif
 
-  Eigen::Translation3f tl_btol(_tf_x, _tf_y, _tf_z);                 // tl: translation
-  Eigen::AngleAxisf rot_x_btol(_tf_roll, Eigen::Vector3f::UnitX());  // rot: rotation
-  Eigen::AngleAxisf rot_y_btol(_tf_pitch, Eigen::Vector3f::UnitY());
-  Eigen::AngleAxisf rot_z_btol(_tf_yaw, Eigen::Vector3f::UnitZ());
+  Eigen::Translation3d tl_btol(_tf_x, _tf_y, _tf_z);                 // tl: translation
+  Eigen::AngleAxisd rot_x_btol(_tf_roll, Eigen::Vector3d::UnitX());  // rot: rotation
+  Eigen::AngleAxisd rot_y_btol(_tf_pitch, Eigen::Vector3d::UnitY());
+  Eigen::AngleAxisd rot_z_btol(_tf_yaw, Eigen::Vector3d::UnitZ());
   tf_btol = (tl_btol * rot_z_btol * rot_y_btol * rot_x_btol).matrix();
 
-  Eigen::Translation3f tl_ltob((-1.0) * _tf_x, (-1.0) * _tf_y, (-1.0) * _tf_z);  // tl: translation
-  Eigen::AngleAxisf rot_x_ltob((-1.0) * _tf_roll, Eigen::Vector3f::UnitX());     // rot: rotation
-  Eigen::AngleAxisf rot_y_ltob((-1.0) * _tf_pitch, Eigen::Vector3f::UnitY());
-  Eigen::AngleAxisf rot_z_ltob((-1.0) * _tf_yaw, Eigen::Vector3f::UnitZ());
+  Eigen::Translation3d tl_ltob((-1.0) * _tf_x, (-1.0) * _tf_y, (-1.0) * _tf_z);  // tl: translation
+  Eigen::AngleAxisd rot_x_ltob((-1.0) * _tf_roll, Eigen::Vector3d::UnitX());     // rot: rotation
+  Eigen::AngleAxisd rot_y_ltob((-1.0) * _tf_pitch, Eigen::Vector3d::UnitY());
+  Eigen::AngleAxisd rot_z_ltob((-1.0) * _tf_yaw, Eigen::Vector3d::UnitZ());
   tf_ltob = (tl_ltob * rot_z_ltob * rot_y_ltob * rot_x_ltob).matrix();
 
   local_map.header.frame_id = "map";
+
+  ndt_map_pub = nh.advertise<sensor_msgs::PointCloud2>("/local_map", 1000, true);
+  current_scan_pub = nh.advertise<sensor_msgs::PointCloud2>("/current_scan", 1, true);
+  original_scan_pub = nh.advertise<sensor_msgs::PointCloud2>("/distorted_scan", 1, true);
+
+  const char *home_directory;
+  if((home_directory = getenv("HOME")) == NULL)
+    home_directory = getpwuid(getuid())->pw_dir; // get home directory
+
+  work_directory = std::string(home_directory) + "/ndt_custom/";
+  std::cout << "Results are stored in: " << work_directory << std::endl;
 
 #ifdef MY_EXTRACT_SCANPOSE // map_pose.csv
   csv_stream.open(work_directory + csv_filename);
