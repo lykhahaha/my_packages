@@ -37,7 +37,7 @@ int main(int argc, char** argv)
   std::cout << "Also ensure that ONLY .txt files with the correct format are in txts/ directory." << std::endl;
   // Output bag file
   rosbag::Bag bag;
-  bag.open("bags/15nov.bag", rosbag::bagmode::Write);
+  bag.open("bags/1dec-bag1.bag", rosbag::bagmode::Write);
 
   // Timestamp data
   std::ifstream time_stamp_stream;
@@ -61,7 +61,7 @@ int main(int argc, char** argv)
   {
     file_count++;
   }
-  std::cout << "Expecting: " << file_count << " txt files." << std::endl;
+  std::cout << "Expecting: " << file_count << " txt files?" << std::endl;
 
   // Processing
   time_stamp_stream.close();
@@ -69,12 +69,12 @@ int main(int argc, char** argv)
   unsigned int file_number = 1;
   unsigned int seq = 0;
   uint64_t sec, nsec;
-  while(getline(time_stamp_stream, time_stamp_str))
+  while(getline(time_stamp_stream, time_stamp_str)) try
   {
     std::ifstream in_stream;
     std::cout << "--------------------------------------------------------------\n";
-    std::cout << "Reading: txts/Lidar" << file_number << ".txt" << std::endl;
-    in_stream.open("txts/Lidar" + std::to_string(file_number) + ".txt");
+    std::cout << "Reading: txts/" << file_number << ".txt" << std::endl;
+    in_stream.open("txts/" + std::to_string(file_number) + ".txt");
 
     // Place-holder for variables
     pcl::PointCloud<pcl::PointXYZI> scan;
@@ -109,11 +109,18 @@ int main(int argc, char** argv)
 
       scan.push_back(new_point);
     }
+
+    if(scan.size() == 0)
+    {
+      std::cout << "INFO: No points to read in txts/" << file_number << ".txt" << std::endl;
+      file_number++;
+      continue;
+    }
     // Write to pcd file
     // pcl::io::savePCDFileBinary("pcds/Lidar" + std::to_string(file_number) + ".pcd", scan);
     std::cout << "Saved [" << scan.size() << " points, " << points_skipped 
               << " skipped] points to pcds/Lidar" << file_number << ".pcd" << std::endl;
-    // std::cout << "---------------------------------------" << std::endl;
+    std::cout << "---------------------------------------" << std::endl;
 
     // Timestamp for msg
     // Time in microseconds i assume
@@ -134,6 +141,11 @@ int main(int argc, char** argv)
     bag.write("/points_raw", ros::Time::now(), *scan_msg_ptr); 
     pub.publish(*scan_msg_ptr);
     file_number++;     
+  }
+  catch(std::exception& e)
+  {
+    std::cout << e.what() << std::endl;
+    std::cout << "No more data for timestamp? Skipping the rest of LidarTimestamp.csv" << std::endl;
   }
 
   bag.close();

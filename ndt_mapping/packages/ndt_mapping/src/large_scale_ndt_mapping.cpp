@@ -558,7 +558,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   #ifdef LIMIT_HEIGHT
   pcl::transformPointCloud(src, *transformed_tmp_ptr, t_localizer);
   #else
-  pcl::transformPointCloud(scan, *transformed_tmp_ptr, t_localizer);
+  pcl::transformPointCloud(*filtered_scan_ptr, *transformed_tmp_ptr, t_localizer);
   #endif // LIMIT_HEIGHT
   sensor_msgs::PointCloud2::Ptr tmp_msg_ptr(new sensor_msgs::PointCloud2);
   pcl::toROSMsg(*transformed_tmp_ptr, *tmp_msg_ptr);
