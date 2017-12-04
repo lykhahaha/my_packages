@@ -622,18 +622,6 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
   char buffer[100];
   std::strftime(buffer, 100, "%Y%b%d_%H%M", pnow);
   std::string filename = work_directory + "ndt_" + std::string(buffer) + ".pcd";
-  std::cout << "-----------------------------------------------------------------\n";
-  std::cout << "Writing the last map to pcd file before shutting down node..." << std::endl;
-
-  pcl::PointCloud<pcl::PointXYZI> last_map;
-  for (auto& item: world_map) 
-    last_map += item.second;
-
-  last_map.header.frame_id = "map";
-  pcl::io::savePCDFileBinary(filename, last_map);
-  std::cout << "Saved " << last_map.points.size() << " data points to " << filename << ".\n";
-  std::cout << "-----------------------------------------------------------------" << std::endl;
-  std::cout << "Done. Node will now shutdown." << std::endl;
 
   // Write a config file
   char cbuffer[100];
@@ -669,6 +657,19 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
   config_stream << "Time taken: " << process_hr << " hr "
                                   << process_min << " min "
                                   << process_sec << " sec" << std::endl;
+
+  std::cout << "-----------------------------------------------------------------\n";
+  std::cout << "Writing the last map to pcd file before shutting down node..." << std::endl;
+
+  pcl::PointCloud<pcl::PointXYZI> last_map;
+  for (auto& item: world_map) 
+    last_map += item.second;
+
+  last_map.header.frame_id = "map";
+  pcl::io::savePCDFileBinary(filename, last_map);
+  std::cout << "Saved " << last_map.points.size() << " data points to " << filename << ".\n";
+  std::cout << "-----------------------------------------------------------------" << std::endl;
+  std::cout << "Done. Node will now shutdown." << std::endl;
 
   // All the default sigint handler does is call shutdown()
   ros::shutdown();

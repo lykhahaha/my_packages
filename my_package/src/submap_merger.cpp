@@ -133,6 +133,13 @@ int main(int argc, char** argv)
   rosbag::View view(bag, rosbag::TopicQuery(reading_topics));
   std::cout << "Done." << std::endl;
 
+  double min_scan_range = 0;
+  if(argc == 3)
+  {
+    min_scan_range = std::stod(argv[2]);
+    std::cout << "Using min_scan_range = " << min_scan_range << std::endl;
+  }
+
   std::string csvfile = "map_pose.csv";
   std::cout << "Reading " << csvfile << " in the current directory.\n";
   std::cout << "Please ensure that the format of the csv file is:" << std::endl;
@@ -231,13 +238,33 @@ int main(int argc, char** argv)
     }
 #ifdef WRITE_CORRECTED_SCAN_TO_BAG
     // Correct point cloud first
-    pcl::PointCloud<pcl::PointXYZI> src, dst;
+    pcl::PointCloud<pcl::PointXYZI> src, fsrc, dst;
     pcl::fromROSMsg(*input_cloud, src);
     correctLIDARscan(src, rel_transform, interval);
 
+    if(argc == 3)
+    {
+      // Filter pointcloud
+      pcl::PointXYZI p;
+      for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = src.begin(); item != src.end(); item++)
+      {
+        p.x = (double)item->x;
+        p.y = (double)item->y;
+        p.z = (double)item->z;
+        p.intensity = (double)item->intensity;
+
+        r = sqrt(pow(p.x, 2.0) + pow(p.y, 2.0));
+        if(r > min_scan_range)
+        {
+          fsrc.push_back(p);
+        }
+      }
+    }
+    else fsrc = src;
+
     // Add to bag regardless of key
     sensor_msgs::PointCloud2::Ptr scan_msg_ptr(new sensor_msgs::PointCloud2);
-    pcl::toROSMsg(src, *scan_msg_ptr);
+    pcl::toROSMsg(fsrc, *scan_msg_ptr);
     scan_msg_ptr->header.seq = input_cloud->header.seq;
     scan_msg_ptr->header.stamp = input_cloud->header.stamp;
     scan_msg_ptr->header.frame_id = input_cloud->header.frame_id;
@@ -256,7 +283,7 @@ int main(int argc, char** argv)
     }
 
     // Transform the corrected pointcloud
-    pcl::transformPointCloud(src, dst, crnt_transform);
+    pcl::transformPointCloud(fsrc, dst, crnt_transform);
     // Add to map
     map += dst;
 #else
@@ -271,13 +298,31 @@ int main(int argc, char** argv)
     }
 
     // Correct point cloud first
-    pcl::PointCloud<pcl::PointXYZI> src, dst;
+    pcl::PointCloud<pcl::PointXYZI> src, fsrc, dst;
     pcl::fromROSMsg(*input_cloud, src);
     correctLIDARscan(src, rel_transform, interval);
 
+    if(argc == 3)
+    {  
+      // Filter pointcloud
+      pcl::PointXYZI p;
+      for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = src.begin(); item != src.end(); item++)
+      {
+        p.x = (double)item->x;
+        p.y = (double)item->y;
+        p.z = (double)item->z;
+        p.intensity = (double)item->intensity;
+        if((sqrt(pow(p.x, 2.0) + pow(p.y, 2.0))) > min_scan_range)
+        {
+          fsrc.push_back(p);
+        }
+      }
+    }
+    else fsrc = src;
+
     // Transform the corrected pointcloud
-    pcl::transformPointCloud(src, dst, crnt_transform);
-    // pcl::io::savePCDFileBinary(key_str + ".pcd", src);
+    pcl::transformPointCloud(fsrc, dst, crnt_transform);
+    // pcl::io::savePCDFileBinary(key_str + ".pcd", fsrc);
 
     // Add to map
     map += dst;

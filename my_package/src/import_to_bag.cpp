@@ -37,7 +37,7 @@ int main(int argc, char** argv)
   std::cout << "Also ensure that ONLY .txt files with the correct format are in txts/ directory." << std::endl;
   // Output bag file
   rosbag::Bag bag;
-  bag.open("bags/1dec-bag1.bag", rosbag::bagmode::Write);
+  bag.open("bags/1dec-carpark.bag", rosbag::bagmode::Write);
 
   // Timestamp data
   std::ifstream time_stamp_stream;
@@ -48,7 +48,7 @@ int main(int argc, char** argv)
   catch(std::exception& e)
   {
     std::cout << e.what() << std::endl;
-    std::cout << "It seems that LidarTimestamp.csv is not available? Instead, use: \n";
+    std::cout << "ERROR: It seems that LidarTimestamp.csv is not available? Instead, use: \n";
     std::cout << "\trosrun my_package import_to_bag_nostamp\n";
     return(-1);
   }
@@ -61,7 +61,6 @@ int main(int argc, char** argv)
   {
     file_count++;
   }
-  std::cout << "Expecting: " << file_count << " txt files?" << std::endl;
 
   // Processing
   time_stamp_stream.close();
@@ -149,6 +148,8 @@ int main(int argc, char** argv)
   }
 
   bag.close();
+
+  std::cout << "Process: " << file_number - 1 << " / Expected: " << file_count << std::endl;
   std::cout << "Finished. Wrote bag file to bags/." << std::endl;
 
   return 0;
