@@ -33,6 +33,16 @@ struct pose
   double yaw;
 };
 
+inline double calculateMinAngleDist(double first, double second) // in radian
+{
+  double difference = first - second;
+  if(difference >= 3.14159265359)
+    return difference - 6.28318530718;
+  if(difference <= -3.14159265359)
+    return difference + 6.28318530718;
+  return difference;
+}
+
 int main(int argc, char** argv)
 {
   ros::init(argc, argv, "get_perspective_scan");
@@ -140,9 +150,9 @@ int main(int argc, char** argv)
   pose_diff.x = lidar_poses[lIdx+1].x - lidar_poses[lIdx].x;
   pose_diff.y = lidar_poses[lIdx+1].y - lidar_poses[lIdx].y;
   pose_diff.z = lidar_poses[lIdx+1].z - lidar_poses[lIdx].z;
-  pose_diff.roll = lidar_poses[lIdx+1].roll - lidar_poses[lIdx].roll;
-  pose_diff.pitch = lidar_poses[lIdx+1].pitch - lidar_poses[lIdx].pitch;
-  pose_diff.yaw = lidar_poses[lIdx+1].yaw - lidar_poses[lIdx].yaw;
+  pose_diff.roll = calculateMinAngleDist(lidar_poses[lIdx+1].roll, lidar_poses[lIdx].roll);
+  pose_diff.pitch = calculateMinAngleDist(lidar_poses[lIdx+1].pitch, lidar_poses[lIdx].pitch);
+  pose_diff.yaw = calculateMinAngleDist(lidar_poses[lIdx+1].yaw, lidar_poses[lIdx].yaw);
   for(unsigned int cIdx = 0, cIdx_end = camera_times.size(); cIdx < cIdx_end; cIdx++)
   {
     if(camera_times[cIdx] < lidar_times[lIdx])
@@ -164,9 +174,9 @@ int main(int argc, char** argv)
       pose_diff.x = lidar_poses[lIdx+1].x - lidar_poses[lIdx].x;
       pose_diff.y = lidar_poses[lIdx+1].y - lidar_poses[lIdx].y;
       pose_diff.z = lidar_poses[lIdx+1].z - lidar_poses[lIdx].z;
-      pose_diff.roll = lidar_poses[lIdx+1].roll - lidar_poses[lIdx].roll;
-      pose_diff.pitch = lidar_poses[lIdx+1].pitch - lidar_poses[lIdx].pitch;
-      pose_diff.yaw = lidar_poses[lIdx+1].yaw - lidar_poses[lIdx].yaw;
+      pose_diff.roll = calculateMinAngleDist(lidar_poses[lIdx+1].roll, lidar_poses[lIdx].roll);
+      pose_diff.pitch = calculateMinAngleDist(lidar_poses[lIdx+1].pitch, lidar_poses[lIdx].pitch);
+      pose_diff.yaw = calculateMinAngleDist(lidar_poses[lIdx+1].yaw, lidar_poses[lIdx].yaw);
       cIdx--; // to current cam
       continue;
     }
@@ -181,7 +191,10 @@ int main(int argc, char** argv)
                              lidar_poses[lIdx].yaw + interpolating_ratio * pose_diff.yaw});
     std::cout << "Pose interpolated: " << interpolating_pose.x << ","
                                        << interpolating_pose.y << ","
-                                       << interpolating_pose.z << std::endl;
+                                       << interpolating_pose.z << ","
+                                       << interpolating_pose.roll << ","
+                                       << interpolating_pose.pitch << ","
+                                       << interpolating_pose.yaw << std::endl;
 
     // Search around interpolated point for cloud
     // K nearest neighbor search
@@ -204,10 +217,22 @@ int main(int argc, char** argv)
       }
     }
 
+    // Transform back to local coordinate
+    Eigen::Affine3d transform;
+    pcl::getTransformation(interpolating_pose.x, 
+                           interpolating_pose.y, 
+                           interpolating_pose.z, 
+                           interpolating_pose.roll, 
+                           interpolating_pose.pitch, 
+                           interpolating_pose.yaw, transform);
+
+    pcl::PointCloud<pcl::PointXYZ> localCloud;
+    pcl::transformPointCloud(nearestCloud, localCloud, transform.inverse());
+
     // Publish
     sensor_msgs::PointCloud2::Ptr scan_msg_ptr(new sensor_msgs::PointCloud2);
-    nearestCloud.header.frame_id = "map";
-    pcl::toROSMsg(nearestCloud, *scan_msg_ptr);
+    localCloud.header.frame_id = "map";
+    pcl::toROSMsg(localCloud, *scan_msg_ptr);
     scan_pub.publish(*scan_msg_ptr);
   }
   // ros::spin();
