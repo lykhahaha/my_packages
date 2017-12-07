@@ -23,6 +23,8 @@
 #include <string>
 #include <vector>
 
+// #define OUTPUT_INTERPOLATED_POSE // to a csv file
+
 struct pose
 {
   double x;
@@ -61,7 +63,7 @@ int main(int argc, char** argv)
   std::cout << "Loaded " << src.size() << " data points from " << cloudfile << std::endl;
   
   // Downsample the source cloud, apply voxelgrid filter
-  double voxel_leaf_size = 0.1;
+  double voxel_leaf_size = 0.3;
   pcl::PointCloud<pcl::PointXYZI>::Ptr src_ptr(new pcl::PointCloud<pcl::PointXYZI>(src));
   pcl::PointCloud<pcl::PointXYZI> tmp;
   // pcl::PointCloud<pcl::PointXYZI>::Ptr filtered_ptr(new pcl::PointCloud<pcl::PointXYZI>());
@@ -85,9 +87,13 @@ int main(int argc, char** argv)
   kdtree.setInputCloud(filtered_ptr);
 
   // LIDAR pose data
-  std::string posefile = "/home/zwu/1dec-datacollection/second/localizing_pose.csv";
+  std::string posefile = "/home/zwu/1dec-datacollection/second/localizing_lidarpose.csv";
   std::ifstream pose_stream;
   pose_stream.open(posefile);
+
+  // Eigen::Vector3d lidar_vehicle(1.2, 0.0, 2.0);
+  // Eigen::Affine3d tf_ltov;
+  // pcl::getTransformation(1.2, 0.0, 2.0, 0.0, 0.0, 0.0, tf_ltov);
 
   // Place-holder for csv stream variables
   std::string line, seq_str, sec_str, nsec_str, x_str, y_str, z_str, roll_str, pitch_str, yaw_str;
@@ -96,6 +102,15 @@ int main(int argc, char** argv)
   getline(pose_stream, line);
   std::cout << "File sequence: " << line << std::endl;
   std::cout << "Collecting localized lidar poses and time stamps." << std::endl;
+  const double lidar_time_offset = 0;
+
+  #ifdef OUTPUT_INTERPOLATED_POSE
+  std::ofstream intrpl_pose_stream;
+  std::string intrpl_pose_file = "/home/zwu/1dec-datacollection/second/interpolated_poses.csv";
+  intrpl_pose_stream.open(intrpl_pose_file);
+  intrpl_pose_stream << "timestamp,x,y,z,roll,pitch,yaw" << std::endl;
+  #endif
+
   while(getline(pose_stream, line))
   {
     std::stringstream line_stream(line);
@@ -113,7 +128,18 @@ int main(int argc, char** argv)
 
     double current_time = std::stod(sec_str) + std::stod(nsec_str) / 1e9; // in seconds
     // std::cout << "time: " << current_time << std::endl;
-    lidar_times.push_back(current_time);
+    lidar_times.push_back(current_time + lidar_time_offset);
+    Eigen::Affine3d tf_vtow;
+    pcl::getTransformation(std::stod(x_str), std::stod(y_str), std::stod(z_str),
+                           std::stod(roll_str), std::stod(pitch_str), std::stod(yaw_str),
+                           tf_vtow);
+
+    // Eigen::Vector3d lidar_world = tf_vtow * lidar_vehicle;
+    // pose current_pose({lidar_world[0], lidar_world[1], lidar_world[2],
+    //                    std::stod(roll_str), std::stod(pitch_str), std::stod(yaw_str)});
+    // Eigen::Affine3d tf_ltow = tf_vtow * tf_ltov;
+    // pose current_pose;
+    // pcl::getTranslationAndEulerAngles(tf_ltow, current_pose.x, current_pose.y, current_pose.z, current_pose.roll, current_pose.pitch, current_pose.yaw);
     pose current_pose({std::stod(x_str), std::stod(y_str), std::stod(z_str),
                        std::stod(roll_str), std::stod(pitch_str), std::stod(yaw_str)});
     // std::cout << "pose: " << current_pose.x << ","
@@ -136,10 +162,8 @@ int main(int argc, char** argv)
   std::cout << "INFO/WARN: Collecting camera timestamps / NO HEADER EXPECTED FOR THIS FILE." << std::endl;
   while(getline(cam_stream, line))
   {
-    // uint64_t sec = std::stoull(line.c_str()) / 1000000; // to s
-    // uint64_t nsec = std::stoull(line.c_str()) % 1000000; // to us
     double current_time = std::stoull(line.c_str()) / 1e6; // from us to s
-    std::cout << "time: " << std::setprecision(6) << current_time << std::endl;
+    // std::cout << "time: " << std::fixed << current_time << std::endl;
     camera_times.push_back(current_time);
   }
   std::cout << "INFO: Collected " << camera_times.size() << " data." << std::endl;
@@ -153,17 +177,32 @@ int main(int argc, char** argv)
   pose_diff.roll = calculateMinAngleDist(lidar_poses[lIdx+1].roll, lidar_poses[lIdx].roll);
   pose_diff.pitch = calculateMinAngleDist(lidar_poses[lIdx+1].pitch, lidar_poses[lIdx].pitch);
   pose_diff.yaw = calculateMinAngleDist(lidar_poses[lIdx+1].yaw, lidar_poses[lIdx].yaw);
+
+  unsigned int file_count = 1;
+  std::string file_location = "/home/zwu/reprojectiondata/lidar_2/";
   for(unsigned int cIdx = 0, cIdx_end = camera_times.size(); cIdx < cIdx_end; cIdx++)
   {
+    std::cout << "[CAM/LIDAR]: [" << cIdx << "/" << lIdx << "]" << std::endl;
+    std::cout << "Timestamps [C/L]: " << std::fixed << std::setprecision(6) << camera_times[cIdx] << "/"
+                                      << std::fixed << std::setprecision(6) << lidar_times[lIdx] << std::endl;
     if(camera_times[cIdx] < lidar_times[lIdx])
     {
       std::cout << "INFO: Skipping initial timestamps of camera to catchup with lidar..." << std::endl;
+      // We have to create a dummy cloud here as well, since we are skipping camera timestamp, 
+      // but we cannot skip the images taken in the multireprojection (complicated to do ayy)
+      std::ofstream pointcloud_stream;
+      // std::string pointcloud_txt_file = "/home/zwu/reprojectiondata/lidar/" + std::to_string(file_count) + ".txt";
+      pointcloud_stream.open(file_location + std::to_string(file_count) + ".txt");
+      pointcloud_stream.close();
+      std::cout << "Saved 0 points to " + file_location + std::to_string(file_count) + ".txt" << std::endl;
+      std::cout << "---------------------------------------------------------" << std::endl;
+      file_count++;
       continue;
     }
 
     if(camera_times[cIdx] > lidar_times[lIdx+1])
     {
-      std::cout << "INFO: Proceeding to next time period of lidar..." << std::endl;
+      std::cout << "INFO: Proceeding...\n-------------------------------------------" << std::endl;
       lIdx++; // to next lidar
       if(lIdx >= lIdx_end)
       {
@@ -189,12 +228,24 @@ int main(int argc, char** argv)
                              lidar_poses[lIdx].roll + interpolating_ratio * pose_diff.roll,
                              lidar_poses[lIdx].pitch + interpolating_ratio * pose_diff.pitch,
                              lidar_poses[lIdx].yaw + interpolating_ratio * pose_diff.yaw});
-    std::cout << "Pose interpolated: " << interpolating_pose.x << ","
-                                       << interpolating_pose.y << ","
-                                       << interpolating_pose.z << ","
-                                       << interpolating_pose.roll << ","
-                                       << interpolating_pose.pitch << ","
-                                       << interpolating_pose.yaw << std::endl;
+    // std::cout << "Pose interpolated: " << interpolating_pose.x << ","
+    //                                    << interpolating_pose.y << ","
+    //                                    << interpolating_pose.z << ","
+    //                                    << interpolating_pose.roll << ","
+    //                                    << interpolating_pose.pitch << ","
+    //                                    << interpolating_pose.yaw << std::endl;
+
+    #ifdef OUTPUT_INTERPOLATED_POSE
+    intrpl_pose_stream << std::fixed << std::setprecision(0) 
+                       << camera_times[cIdx] * 1e6 << ","
+                       << std::setprecision(10)
+                       << interpolating_pose.x << ","
+                       << interpolating_pose.y << ","
+                       << interpolating_pose.z << ","
+                       << interpolating_pose.roll << ","
+                       << interpolating_pose.pitch << ","
+                       << interpolating_pose.yaw << std::endl;
+    #endif
 
     // Search around interpolated point for cloud
     // K nearest neighbor search
@@ -208,12 +259,12 @@ int main(int argc, char** argv)
     std::vector<float> pointRadiusSquaredDistance;
 
     float radius = 30.0;
-    pcl::PointCloud<pcl::PointXYZ> nearestCloud;
+    pcl::PointCloud<pcl::PointXYZI> nearestCloud;
     if(kdtree.radiusSearch(searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance) > 0)
     {
-      for(size_t i = 0; i < pointIdxRadiusSearch.size (); ++i)
+      for(size_t i = 0; i < pointIdxRadiusSearch.size(); ++i)
       {
-        nearestCloud.push_back(filtered_ptr->points[pointIdxRadiusSearch[i]]);
+        nearestCloud.push_back(tmp.points[pointIdxRadiusSearch[i]]);
       }
     }
 
@@ -226,7 +277,7 @@ int main(int argc, char** argv)
                            interpolating_pose.pitch, 
                            interpolating_pose.yaw, transform);
 
-    pcl::PointCloud<pcl::PointXYZ> localCloud;
+    pcl::PointCloud<pcl::PointXYZI> localCloud;
     pcl::transformPointCloud(nearestCloud, localCloud, transform.inverse());
 
     // Publish
@@ -234,6 +285,24 @@ int main(int argc, char** argv)
     localCloud.header.frame_id = "map";
     pcl::toROSMsg(localCloud, *scan_msg_ptr);
     scan_pub.publish(*scan_msg_ptr);
+
+    // Convert pointcloud to txt file and save
+    std::ofstream pointcloud_stream;
+    // std::string pointcloud_txt_file = "/home/zwu/reprojectiondata/lidar/" + std::to_string(file_count) + ".txt";
+    pointcloud_stream.open(file_location + std::to_string(file_count) + ".txt");
+    for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = localCloud.begin(); item != localCloud.end(); item++)
+    {
+      char output_buffer[1000];
+      double x = item->x;
+      double y = item->y;
+      double z = item->z;
+      int intensity = item->intensity;
+      sprintf(output_buffer, "%.10lf %.10lf %.10lf %d", x, y, z, intensity);
+      pointcloud_stream << output_buffer << std::endl;
+    }
+    std::cout << "Saved " << localCloud.size() << " points to " + file_location + std::to_string(file_count) + ".txt" << std::endl;
+    std::cout << "---------------------------------------------------------" << std::endl;
+    file_count++;
   }
   // ros::spin();
   return 0;

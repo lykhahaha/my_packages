@@ -21,6 +21,7 @@
 #include <pcl_ros/transforms.h>
 #include <pcl_conversions/pcl_conversions.h>
 
+#define LOAM_VELODYNE_ADJUST
 // #define WRITE_CORRECTED_SCAN_TO_BAG
 
 struct pose
@@ -118,13 +119,14 @@ int main(int argc, char** argv)
   // Initiate and get csv file
   ros::init(argc, argv, "submap_merger");
 
-  if(argc < 2)
+  if(argc < 3)
   {
-    std::cout << "Please indicate the bag file corresponding to the map_pose.csv." << std::endl;
-    std::cout << "rosrun my_package submap_merger \"bagfile\"" << std::endl;
+    // std::cout << "Please indicate the bag file corresponding to the map_pose.csv." << std::endl;
+    std::cout << "Missing user input." << std::endl;
+    std::cout << "!! rosrun my_package submap_merger \"posefile.csv\" \"bagfile.bag\"" << std::endl;
     return -1;
   }
-  std::string bagfile = argv[1];
+  std::string bagfile = argv[2];
   std::string bagtopic = "/points_raw";
   std::cout << "Reading bag: " << bagfile << " [topic: " << bagtopic << "]... " << std::flush;
   rosbag::Bag bag(bagfile, rosbag::bagmode::Read);
@@ -134,16 +136,20 @@ int main(int argc, char** argv)
   std::cout << "Done." << std::endl;
 
   double min_scan_range = 0;
-  if(argc == 3)
+  if(argc == 4)
   {
-    min_scan_range = std::stod(argv[2]);
+    min_scan_range = std::stod(argv[3]);
     std::cout << "Using min_scan_range = " << min_scan_range << std::endl;
   }
 
-  std::string csvfile = "map_pose.csv";
+  std::string csvfile = argv[1];
   std::cout << "Reading " << csvfile << " in the current directory.\n";
   std::cout << "Please ensure that the format of the csv file is:" << std::endl;
-  std::cout << "\t{key, sequence, sec, nsec, x, y, z, roll, pitch, yaw}" << std::endl; 
+ // #ifdef LOAM_VELODYNE_ADJUST
+ //  std::cout << "\t{sequence, sec, nsec, x, y, z, roll, pitch, yaw} (loam_velodyne)" << std::endl;
+ // #else
+  std::cout << "\t{key, sequence, sec, nsec, x, y, z, roll, pitch, yaw}" << std::endl;
+ // #endif // LOAM_VELODYNE_ADJUST
   std::ifstream csv_stream(csvfile);
 
   #ifdef WRITE_CORRECTED_SCAN_TO_BAG
@@ -175,10 +181,15 @@ int main(int argc, char** argv)
       isGetLine = true;
     }
 
+    std::cout << line << std::endl;
     std::stringstream line_stream(line);
 
+   // #ifdef LOAM_VELODYNE_ADJUST
+   //  key = 1;
+   // #else
     getline(line_stream, key_str, ',');
     key = std::stod(key_str);
+   // #endif // LOAM_VELODYNE_ADJUST
 
     getline(line_stream, seq_str, ',');
     seq = std::stod(seq_str);
@@ -206,6 +217,52 @@ int main(int argc, char** argv)
     }
     else // check whether the sequence match
     {
+     #ifdef LOAM_VELODYNE_ADJUST
+      if(input_cloud->header.stamp < crnt_time)
+      {
+        std::cout << "Info: input_cloud->header.stamp < crnt_time" << std::endl;
+        std::cout << "(" << input_cloud->header.stamp << " < " << crnt_time << ")" << std::endl;
+        continue;
+      }
+      else while(input_cloud->header.stamp != crnt_time)
+      {
+        std::cout << "Info: input_cloud->header.stamp != crnt_time" << std::endl;
+        std::cout << "(" << input_cloud->header.stamp << " != " << crnt_time << ")" << std::endl;
+        
+        if(!getline(csv_stream, line))
+        {
+          break; // end of csv
+        }
+        std::cout << line << std::endl;
+        std::stringstream line_stream(line);
+        getline(line_stream, key_str, ',');
+        key = std::stod(key_str);
+        getline(line_stream, seq_str, ',');
+        seq = std::stod(seq_str);
+        getline(line_stream, sec_str, ',');
+        getline(line_stream, nsec_str, ',');
+        crnt_time = ros::Time(std::stod(sec_str), std::stod(nsec_str));
+        getline(line_stream, x_str, ',');
+        x = std::stod(x_str);
+        getline(line_stream, y_str, ',');
+        y = std::stod(y_str);
+        getline(line_stream, z_str, ',');
+        z = std::stod(z_str);
+        getline(line_stream, roll_str, ',');
+        roll = std::stod(roll_str);
+        getline(line_stream, pitch_str, ',');
+        pitch = std::stod(pitch_str);
+        getline(line_stream, yaw_str);
+        yaw = std::stod(yaw_str);
+
+        if(input_cloud->header.stamp < crnt_time)
+        {
+          std::cout << "Error: input_cloud->header.stamp does not match crnt_time" << std::endl;
+          std::cout << "(" << input_cloud->header.stamp << " != " << crnt_time << ")" << std::endl;
+          return(-1);
+        }
+      }
+     #else
       if(input_cloud->header.seq != seq)
       {
         std::cout << "Info: input_cloud->header.seq != seq (" << input_cloud->header.seq << " != " << seq << ")" << std::endl;
@@ -218,6 +275,7 @@ int main(int argc, char** argv)
         std::cout << "(" << input_cloud->header.stamp << " != " << crnt_time << ")" << std::endl;
         return(-1);
       }
+      #endif // LOAM_VELODYNE_ADJUST
     }
 
     // Create transformation matrix
