@@ -26,14 +26,13 @@ if(CUDA_FOUND)
 endif()
 
 find_package(catkin REQUIRED COMPONENTS
-  autoware_msgs
   # lidar_pcl
   roscpp
   pcl_ros
   pcl_conversions
   sensor_msgs
   velodyne_pointcloud
-  ndt_registration
+  # ndt_registration
   ${FAST_PCL_PACKAGES}
 )
 
@@ -43,7 +42,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES ndt_pcl
-  CATKIN_DEPENDS std_msgs velodyne_pointcloud autoware_msgs ${FAST_PCL_PACKAGES}
+  CATKIN_DEPENDS std_msgs velodyne_pointcloud ${FAST_PCL_PACKAGES}
 #  DEPENDS system_lib
 )
 
@@ -56,34 +55,32 @@ include_directories(include ${catkin_INCLUDE_DIRS} ${CUDA_INCLUDE_DIRS})
 IF(PCL_VERSION VERSION_LESS "1.7.2")
 SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -fopenmp -Wall ${CMAKE_CXX_FLAGS}")
 ELSE(PCL_VERSION VERSION_LESS "1.7.2")
-#SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -fopenmp -Wall -DUSE_FAST_PCL ${CMAKE_CXX_FLAGS}")
+# SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -fopenmp -Wall -DUSE_FAST_PCL ${CMAKE_CXX_FLAGS}")
 # SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -fopenmp -Wall -DUSE_GPU_PCL ${CMAKE_CXX_FLAGS}")
 SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -fopenmp -Wall ${CMAKE_CXX_FLAGS}")
 ENDIF(PCL_VERSION VERSION_LESS "1.7.2")
-
-#SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -fopenmp -Wall ${CMAKE_CXX_FLAGS}")
 
 #add_executable(ndt_matching src/ndt_matching.cpp)
 add_executable(mndt src/mndt.cpp)
 add_executable(ndt_mapping src/ndt_mapping.cpp)
 add_executable(large_scale_ndt_mapping src/large_scale_ndt_mapping.cpp)
 add_executable(ground_removed_ndt_mapping src/ground_removed_ndt_mapping.cpp)
-add_executable(d2d_ndt_mapping src/d2d_ndt_mapping.cpp)
+#add_executable(d2d_ndt_mapping src/d2d_ndt_mapping.cpp)
 
 if(CUDA_FOUND)
 target_include_directories(ndt_mapping PRIVATE ${CUDA_INCLUDE_DIRS})
 endif()
 
-#target_link_libraries(ndt_matching ${catkin_LIBRARIES})
+# target_link_libraries(ndt_matching ${catkin_LIBRARIES})
 target_link_libraries(mndt ${catkin_LIBRARIES})
 target_link_libraries(ndt_mapping ${catkin_LIBRARIES})
 target_link_libraries(large_scale_ndt_mapping ${catkin_LIBRARIES})
 target_link_libraries(ground_removed_ndt_mapping ${catkin_LIBRARIES})
-target_link_libraries(d2d_ndt_mapping ${catkin_LIBRARIES})
+# target_link_libraries(d2d_ndt_mapping ${catkin_LIBRARIES})
 
-#add_dependencies(ndt_matching autoware_msgs_generate_messages_cpp)
-add_dependencies(mndt ${catkin_LIBRARIES})
-add_dependencies(ndt_mapping autoware_msgs_generate_messages_cpp)
-add_dependencies(large_scale_ndt_mapping autoware_msgs_generate_messages_cpp)
-add_dependencies(ground_removed_ndt_mapping autoware_msgs_generate_messages_cpp)
-add_dependencies(d2d_ndt_mapping ${catkin_LIBRARIES} autoware_msgs_generate_messages_cpp)
+# add_dependencies(ndt_matching)
+# add_dependencies(mndt ${catkin_LIBRARIES})
+# add_dependencies(ndt_mapping ${catkin_LIBRARIES})
+# add_dependencies(large_scale_ndt_mapping ${catkin_LIBRARIES})
+# add_dependencies(ground_removed_ndt_mapping ${catkin_LIBRARIES})
+# add_dependencies(d2d_ndt_mapping ${catkin_LIBRARIES})
