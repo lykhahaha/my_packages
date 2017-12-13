@@ -1,8 +1,6 @@
 #ifndef LIDAR_PCL_NDT_LIDAR_MAPPING_IMPL_H_
 #define LIDAR_PCL_NDT_LIDAR_MAPPING_IMPL_H_
 
-// #include <lidar_pcl/ndt_lidar_mapping.h>
-
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT>
 lidar_pcl::NDTCorrectedLidarMapping<PointT>::NDTCorrectedLidarMapping()
@@ -203,6 +201,7 @@ template <typename PointT> void
 lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<PointT> new_scan,
                                                           const ros::Time current_scan_time)
 {
+  // lidar_pcl::motionUndistort()
   PointCloudPtr new_scan_ptr(new pcl::PointCloud<PointT>(new_scan));
   transformed_scan_ptr_->clear();
 
@@ -240,8 +239,8 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
   Pose vehicle_estimated_pose(previous_pose_.x + pose_diff_.x,
                               previous_pose_.y + pose_diff_.y,
                               previous_pose_.z + pose_diff_.z,
-                              previous_pose_.roll + pose_diff_.roll,
-                              previous_pose_.pitch + pose_diff_.pitch,
+                              previous_pose_.roll, // + pose_diff_.roll,
+                              previous_pose_.pitch, // + pose_diff_.pitch,
                               previous_pose_.yaw + pose_diff_.yaw);
 
   // std::cout << "Velocity: " << lidar_estimated_velocity << std::endl;
@@ -258,7 +257,7 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
     // std::cout << "Matching: " << iter_num << std::endl;
     // std::cout << "Initial guess: " << lidar_estimated_pose << std::endl;
     // std::cout << "Initial Vel: " << lidar_estimated_velocity << std::endl;
-    correctLidarScan(*filtered_scan_ptr, lidar_estimated_velocity, scan_interval);
+    // correctLidarScan(*filtered_scan_ptr, lidar_estimated_velocity, scan_interval);
     ndt_.setInputSource(filtered_scan_ptr);
     Eigen::Matrix4f init_guess = getInitNDTPose(vehicle_estimated_pose);
     PointCloudPtr output_cloud(new pcl::PointCloud<PointT>);
@@ -345,7 +344,7 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
   double y_diff = current_pose_.y - added_pose_.y;
   double z_diff = current_pose_.z - added_pose_.z;
   double translation_diff = sqrt(x_diff * x_diff + y_diff * y_diff + z_diff * z_diff);
-  double rotation_diff = current_pose_.yaw - added_pose_.yaw;
+  double rotation_diff = std::fabs(current_pose_.yaw - added_pose_.yaw);
   if(translation_diff >= min_add_scan_shift_ || rotation_diff >= min_add_scan_yaw_diff_)
   {
     addNewScan(transformed_scan_ptr_);

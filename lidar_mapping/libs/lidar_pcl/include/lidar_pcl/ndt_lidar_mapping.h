@@ -4,6 +4,7 @@
 // // Basic libs
 // #include <chrono>
 // #include <fstream>
+#include <cmath>
 #include <iostream>
 // #include <mutex>
 // #include <omp.h>
@@ -53,6 +54,7 @@
 
 // #include <lidar_pcl/lidar_pcl.h>
 #include "lidar_pcl/data_types.h"
+#include "lidar_pcl/motion_undistortion.h"
 
 namespace lidar_pcl
 {
@@ -90,15 +92,16 @@ namespace lidar_pcl
     const double CORRECTED_NDT_ANGLE_THRESHOLD_ = 0.1745329; // approx 10 degree
     const unsigned int CORRECTED_NDT_ITERATION_THRESHOLD_ = 1;
 
-  public:
-    NDTCorrectedLidarMapping();
-
     void addNewScan(const PointCloudPtr new_scan);
     void updateLocalMap(Pose current_pose);
     Vel estimateCurrentVelocity(Vel velocity, Accel acceleration, double interval);
     Pose estimateCurrentPose(Pose pose, Vel velocity, double interval);
     Eigen::Matrix4f getInitNDTPose(Pose pose);
     void correctLidarScan(pcl::PointCloud<PointT>& scan, Vel velocity, double interval);
+
+  public:
+    NDTCorrectedLidarMapping();
+
     void doNDTMapping(const pcl::PointCloud<PointT> new_scan, const ros::Time current_scan_time);
 
     void setTFCalibration(double tf_x, double tf_y, double tf_z, 
@@ -159,6 +162,11 @@ namespace lidar_pcl
       return added_scan_num_;
     }
 
+    inline bool isMapUpdated()
+    {
+      return is_map_updated_;
+    }
+
     inline pcl::PointCloud<PointT> localMap()
     {
       local_map_.header.frame_id = "map";
@@ -194,21 +202,6 @@ namespace lidar_pcl
         return seconds;
       else 
         return seconds + 1e-9; // to avoid dividing with 0
-    }
-
-    inline double getYawAngle(double _x, double _y)
-    {
-      return std::atan2(_y, _x) * 180 / 3.14159265359; // in value
-    }
-
-    inline double calculateMinAngleDist(double first, double second) // in degree
-    {
-      double difference = first - second;
-      if(difference >= 180.0)
-        return difference - 360.0;
-      if(difference <= -180.0)
-        return difference + 360.0;
-      return difference;
     }
   };
 }

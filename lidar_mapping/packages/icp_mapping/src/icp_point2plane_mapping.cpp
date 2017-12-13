@@ -492,7 +492,7 @@ int main(int argc, char** argv)
   }
   catch(...)
   {
-    std::cout << "ERROR: Failed to access output directory." << std::endl;
+    std::cout << "ERROR: Failed to access directory:" << _output_directory << std::endl;
     return -1;
   }
 

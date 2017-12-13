@@ -10,11 +10,8 @@
 #include <vector>
 
 // Libraries for system commands
-// #include <cstdlib>
-// #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-// #include <pwd.h>
 
 #include <boost/foreach.hpp> // to read bag file
 #define foreach BOOST_FOREACH
@@ -27,8 +24,6 @@
 #include <ros/duration.h>
 #include <signal.h>
 #include <sensor_msgs/PointCloud2.h>
-// #include <velodyne_pointcloud/point_types.h>
-// #include <velodyne_pointcloud/rawdata.h>
 
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_datatypes.h>
@@ -50,8 +45,6 @@
 #ifdef USE_GPU_PCL
 #include <fast_pcl/ndt_gpu/NormalDistributionsTransform.h>
 #endif
-
-// #include <lidar_pcl/lidar_pcl.h>
 
 // Here are the functions I wrote. De-comment to use
 #define TILE_WIDTH 35 // Maximum range of LIDAR 32E is 70m
@@ -786,7 +779,7 @@ int main(int argc, char** argv)
   }
   catch(...)
   {
-    std::cout << "ERROR: Failed to access output directory." << std::endl;
+    std::cout << "ERROR: Failed to access directory:" << _output_directory << std::endl;
     return -1;
   }
 

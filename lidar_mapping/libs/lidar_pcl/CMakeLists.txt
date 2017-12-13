@@ -36,7 +36,7 @@ set(impl_incs
 
 include_directories(${PCL_INCLUDE_DIRS} "${CMAKE_CURRENT_SOURCE_DIR}/include")
 
-SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -Wall")
+SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -Wall ${CMAKE_CXX_FLAGS}")
 
 add_library("${LIB_NAME}" ${srcs} ${incs} ${impl_incs})
 

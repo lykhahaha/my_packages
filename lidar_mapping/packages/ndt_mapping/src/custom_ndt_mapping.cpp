@@ -10,10 +10,8 @@
 #include <vector>
 
 // Libraries for system commands
-// #include <cstdlib>
-#include <unistd.h>
 #include <sys/types.h>
-#include <pwd.h>
+#include <sys/stat.h>
 
 #include <boost/foreach.hpp> // to read bag file
 #define foreach BOOST_FOREACH
@@ -28,8 +26,8 @@
 // #include <std_msgs/Bool.h>
 // #include <std_msgs/Float32.h>
 #include <sensor_msgs/PointCloud2.h>
-#include <velodyne_pointcloud/point_types.h>
-#include <velodyne_pointcloud/rawdata.h>
+// #include <velodyne_pointcloud/point_types.h>
+// #include <velodyne_pointcloud/rawdata.h>
 
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_datatypes.h>
@@ -52,34 +50,35 @@
 #include <lidar_pcl/data_types.h>
 #include <lidar_pcl/ndt_lidar_mapping.h>
 
-#define EXTRACT_POSE // output pose values to csv file
+#define OUTPUT_POSE // output pose values to csv file
 
-#ifdef EXTRACT_POSE
+#ifdef OUTPUT_POSE
 std::ofstream csv_stream;
 std::string csv_filename = "map_pose.csv";
-#endif // EXTRACT_POSE
+#endif // OUTPUT_POSE
 
 // global variables
 // Default values
+static ros::Publisher ndt_map_pub, current_scan_pub;
+
 static int max_iter = 300;       // Maximum iterations
 static float ndt_res = 2.8;      // Resolution
 static double step_size = 0.05;   // Step size
 static double trans_eps = 0.001;  // Transformation epsilon
 
-static float _start_time = 0; // 0 means start playing bag from beginnning
-static float _play_duration = -1; // negative means play everything
+static double voxel_leaf_size = 0.1;
 static double min_scan_range = 2.0;
 static double min_add_scan_shift = 1.0;
 static double min_add_scan_yaw_diff = 0.005;
+
+static float _start_time = 0; // 0 means start playing bag from beginnning
+static float _play_duration = -1; // negative means play everything
 static std::string _bag_file;
-static std::string work_directory;
-
-// Leaf size of VoxelGrid filter.
-static double voxel_leaf_size = 0.1;
-
-static ros::Publisher ndt_map_pub, current_scan_pub;
+static std::string _output_directory;
+static std::string _namespace; // unused, TODO
 
 static double _tf_x, _tf_y, _tf_z, _tf_roll, _tf_pitch, _tf_yaw;
+
 std::time_t process_begin = std::time(NULL);
 std::tm* pnow = std::localtime(&process_begin);
 
@@ -89,26 +88,14 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
 {
   char buffer[100];
   std::strftime(buffer, 100, "%Y%b%d_%H%M", pnow);
-  std::string filename = work_directory + "map_" + std::string(buffer) + ".pcd";
-  std::cout << "-----------------------------------------------------------------\n";
-  std::cout << "Writing the last map to pcd file before shutting down node..." << std::endl;
-
-  pcl::PointCloud<pcl::PointXYZI> last_map;
-  for(auto& item: ndt.worldMap()) 
-    last_map += item.second;
-
-  last_map.header.frame_id = "map";
-  pcl::io::savePCDFileBinary(filename, last_map);
-  std::cout << "Saved " << last_map.points.size() << " data points to " << filename << ".\n";
-  std::cout << "-----------------------------------------------------------------" << std::endl;
-  std::cout << "Done. Node will now shutdown." << std::endl;
+  std::string filename = _output_directory + "map_" + std::string(buffer) + ".pcd";
 
   // Write a config file
   char cbuffer[100];
   std::ofstream config_stream;
   std::strftime(cbuffer, 100, "%b%d-%H%M", pnow);
   std::string config_file = "config@" + std::string(cbuffer) + ".txt";
-  config_stream.open(work_directory + config_file);
+  config_stream.open(_output_directory + config_file);
   std::strftime(cbuffer, 100, "%c", pnow);
 
   std::time_t process_end = std::time(NULL);
@@ -122,10 +109,11 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
   config_stream << "Start time: " << _start_time << std::endl;
   config_stream << "Play duration: " << _play_duration << std::endl;
   config_stream << "Corrected end scan pose: ?\n" << std::endl;
-  config_stream << "###\nResolution: " << ndt_res << std::endl;
+  config_stream << "\nResolution: " << ndt_res << std::endl;
   config_stream << "Step Size: " << step_size << std::endl;
   config_stream << "Transformation Epsilon: " << trans_eps << std::endl;
-  config_stream << "Leaf Size: " << voxel_leaf_size << std::endl;
+  config_stream << "Max Iteration Number: " << max_iter << std::endl;
+  config_stream << "\nLeaf Size: " << voxel_leaf_size << std::endl;
   config_stream << "Minimum Scan Range: " << min_scan_range << std::endl;
   config_stream << "Minimum Add Scan Shift: " << min_add_scan_shift << std::endl;
   config_stream << "Minimum Add Scan Yaw Change: " << min_add_scan_yaw_diff << std::endl;
@@ -136,15 +124,26 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
                                   << process_min << " min "
                                   << process_sec << " sec" << std::endl;
 
+  std::cout << "-----------------------------------------------------------------\n";
+  std::cout << "Writing the last map to pcd file before shutting down node..." << std::endl;
+
+  pcl::PointCloud<pcl::PointXYZI> last_map;
+  for(auto& item: ndt.worldMap()) 
+    last_map += item.second;
+
+  last_map.header.frame_id = "map";
+  pcl::io::savePCDFileBinary(filename, last_map);
+  std::cout << "Saved " << last_map.points.size() << " data points to " << filename << ".\n";
+  std::cout << "-----------------------------------------------------------------" << std::endl;
+  std::cout << "Done. Node will now shutdown." << std::endl;
+
   // All the default sigint handler does is call shutdown()
   ros::shutdown();
 }
 
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "ndt_mapping", ros::init_options::NoSigintHandler);
-
-  ros::NodeHandle nh;
+  ros::init(argc, argv, "custom_ndt_mapping", ros::init_options::NoSigintHandler);
   signal(SIGINT, mySigintHandler);
   ros::NodeHandle private_nh("~");
 
@@ -152,14 +151,19 @@ int main(int argc, char** argv)
   private_nh.getParam("bag_file", _bag_file);
   private_nh.getParam("start_time", _start_time);
   private_nh.getParam("play_duration", _play_duration);
+  private_nh.getParam("namespace", _namespace);
+  private_nh.getParam("output_directory", _output_directory);
+
   private_nh.getParam("resolution", ndt_res);
   private_nh.getParam("step_size", step_size);  
   private_nh.getParam("transformation_epsilon", trans_eps);
   private_nh.getParam("max_iteration", max_iter);
+
   private_nh.getParam("voxel_leaf_size", voxel_leaf_size);
   private_nh.getParam("min_scan_range", min_scan_range);
   private_nh.getParam("min_add_scan_shift", min_add_scan_shift);
   private_nh.getParam("min_add_scan_yaw_diff", min_add_scan_yaw_diff);
+
   private_nh.getParam("tf_x", _tf_x);
   private_nh.getParam("tf_y", _tf_y);
   private_nh.getParam("tf_z", _tf_z);
@@ -171,6 +175,7 @@ int main(int argc, char** argv)
   std::cout << "bag_file: " << _bag_file << std::endl;
   std::cout << "start_time: " << _start_time << std::endl;
   std::cout << "play_duration: " << _play_duration << std::endl;
+  std::cout << "namespace: " << (_namespace.size() > 0 ? _namespace : "N/A") << std::endl;
   std::cout << "ndt_res: " << ndt_res << std::endl;
   std::cout << "step_size: " << step_size << std::endl;
   std::cout << "trans_epsilon: " << trans_eps << std::endl;
@@ -191,20 +196,24 @@ int main(int argc, char** argv)
   ndt.setMinAddScanYawDiff(min_add_scan_yaw_diff);
   ndt.setVoxelLeafSize(voxel_leaf_size);
 
+  ros::NodeHandle nh;
   ndt_map_pub = nh.advertise<sensor_msgs::PointCloud2>("/local_map", 1000, true);
   current_scan_pub = nh.advertise<sensor_msgs::PointCloud2>("/current_scan", 1, true);
 
-  const char *home_directory;
-  if((home_directory = getenv("HOME")) == NULL)
-    home_directory = getpwuid(getuid())->pw_dir; // get home directory
+  try
+  {
+    mkdir(_output_directory.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+  }
+  catch(...)
+  {
+    std::cout << "ERROR: Failed to access directory:" << _output_directory << std::endl;
+    return -1;
+  }
 
-  work_directory = std::string(home_directory) + "/ndt_custom/";
-  std::cout << "Results are stored in: " << work_directory << std::endl;
-
-#ifdef EXTRACT_POSE // map_pose.csv
-  csv_stream.open(work_directory + csv_filename);
+#ifdef OUTPUT_POSE // map_pose.csv
+  csv_stream.open(_output_directory + csv_filename);
   csv_stream << "key,sequence,sec,nsec,x,y,z,roll,pitch,yaw" << std::endl;
-#endif // EXTRACT_POSE
+#endif // OUTPUT_POSE
 
   // Open bagfile with topics, timestamps indicated
   std::cout << "Loading " << _bag_file << std::endl;
@@ -248,9 +257,7 @@ int main(int argc, char** argv)
     double r;
     pcl::PointXYZI p;
     pcl::PointCloud<pcl::PointXYZI> tmp, scan;
-
     pcl::fromROSMsg(*input_cloud, tmp);
-
     for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = tmp.begin(); item != tmp.end(); item++)
     {
       p.x = (double)item->x;
@@ -288,14 +295,14 @@ int main(int argc, char** argv)
     pcl::toROSMsg(ndt.transformedScan(), *scan_msg_ptr);
     current_scan_pub.publish(*scan_msg_ptr);
 
-#ifdef EXTRACT_POSE
+#ifdef OUTPUT_POSE
     // outputing into csv
-    csv_stream << ndt.scanNumber() << "," << input_cloud->header.seq << "," 
+    csv_stream << (ndt.isMapUpdated() ? ndt.scanNumber() : 0) << "," << input_cloud->header.seq << "," 
     					 << input_cloud->header.stamp.sec << "," << input_cloud->header.stamp.nsec << ","
                << lidar_pose.x << "," << lidar_pose.y << "," << lidar_pose.z << ","
                << lidar_pose.roll << "," << lidar_pose.pitch << "," << lidar_pose.yaw
                << std::endl;
-#endif // EXTRACT_POSE
+#endif // OUTPUT_POSE
 
     std::cout << "-----------------------------------------------------------------\n";
     std::cout << "Sequence number: " << input_cloud->header.seq << "\n";
