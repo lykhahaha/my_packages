@@ -24,8 +24,6 @@
 #include <ros/duration.h>
 #include <signal.h>
 #include <sensor_msgs/PointCloud2.h>
-#include <velodyne_pointcloud/point_types.h>
-#include <velodyne_pointcloud/rawdata.h>
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_datatypes.h>
 
@@ -345,7 +343,6 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
   pcl::toROSMsg(*transformed_scan_ptr, *scan_msg_ptr);
   current_scan_pub.publish(*scan_msg_ptr);
 
-
   std::cout << "-----------------------------------------------------------------" << std::endl;
   std::cout << "Sequence number: " << input->header.seq << std::endl;
   std::cout << "Number of scan points: " << scan_ptr->size() << " points." << std::endl;
@@ -367,7 +364,57 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
 
 void mySigintHandler(int sig) // Publish the map/final_submap if node is terminated
 {
+  char buffer[100];
+  std::strftime(buffer, 100, "%Y%b%d_%H%M", pnow);
+  std::string filename = _output_directory + "icp_" + std::string(buffer) + ".pcd";
 
+  // Write a config file
+  char cbuffer[100];
+  std::ofstream config_stream;
+  std::strftime(cbuffer, 100, "%b%d-%H%M", pnow);
+  std::string config_file = "config@" + std::string(cbuffer) + ".txt";
+  config_stream.open(_output_directory + config_file);
+  std::strftime(cbuffer, 100, "%c", pnow);
+
+  std::time_t process_end = std::time(NULL);
+  double process_duration = difftime(process_end, process_begin); // calculate processing duration
+  int process_hr = int(process_duration / 3600);
+  int process_min = int((process_duration - process_hr * 3600) / 60);
+  double process_sec = process_duration - process_hr * 3600 - process_min * 60;
+
+  config_stream << "Created @ " << std::string(cbuffer) << std::endl;
+  config_stream << "Map: " << _bag_file << std::endl;
+  config_stream << "Start time: " << _start_time << std::endl;
+  config_stream << "Play duration: " << (_play_duration < 0 ? "all" : std::to_string(_play_duration)) << std::endl;
+  config_stream << "Corrected end scan pose: ..\n" << std::endl;
+  config_stream << "\nMaximum Iteration Number: " << maximum_iterations << std::endl;
+  config_stream << "Transformation Epsilon: " << transformation_epsilon << std::endl;
+  config_stream << "Max Correspondence Dist: " << max_correspondence_distance << std::endl;
+  config_stream << "Euclidean Fitness Epsilon: " << euclidean_fitness_epsilon << std::endl;
+  config_stream << "RANSAC Outlier Rejection Threshold: " << ransac_outlier_rejection_threshold << std::endl;
+  config_stream << "\nLeaf Size: " << voxel_leaf_size << std::endl;
+  config_stream << "Minimum Scan Range: " << min_scan_range << std::endl;
+  config_stream << "Minimum Add Scan Shift: " << min_add_scan_shift << std::endl;
+  config_stream << "Minimum Add Scan Yaw Change: " << min_add_scan_yaw_diff << std::endl;
+  config_stream << "Tile-map type used. Size of each tile: " 
+                << TILE_WIDTH << "x" << TILE_WIDTH << std::endl;
+  config_stream << "Size of local map: 5 tiles x 5 tiles." << std::endl;
+  config_stream << "Time taken: " << process_hr << " hr "
+                                  << process_min << " min "
+                                  << process_sec << " sec" << std::endl;
+
+  std::cout << "-----------------------------------------------------------------\n";
+  std::cout << "Writing the last map to pcd file before shutting down node..." << std::endl;
+
+  pcl::PointCloud<pcl::PointXYZI> last_map;
+  for (auto& item: world_map) 
+    last_map += item.second;
+
+  last_map.header.frame_id = "map";
+  pcl::io::savePCDFileBinary(filename, last_map);
+  std::cout << "Saved " << last_map.points.size() << " data points to " << filename << ".\n";
+  std::cout << "-----------------------------------------------------------------" << std::endl;
+  std::cout << "Done. Node will now shutdown." << std::endl;
   // All the default sigint handler does is call shutdown()
   ros::shutdown();
 }
@@ -407,19 +454,17 @@ int main(int argc, char** argv)
   private_nh.getParam("tf_pitch", _tf_pitch);
   private_nh.getParam("tf_yaw", _tf_yaw);
 
-  std::cout << "ICP Mapping Parameters: " << std::endl;
+  std::cout << "\nICP Mapping Parameters: " << std::endl;
   std::cout << "bag_file: " << _bag_file << std::endl;
   std::cout << "start_time: " << _start_time << std::endl;
   std::cout << "play_duration: " << _play_duration << std::endl;
   std::cout << "namespace: " << (_namespace.size() > 0 ? _namespace : "N/A") << std::endl;
   std::cout << "output directory: " << _output_directory << std::endl;
-
   std::cout << "maximum_iterations: " << maximum_iterations << std::endl;
   std::cout << "transformation_epsilon: " << transformation_epsilon << std::endl;
   std::cout << "max_correspondence_distance: " << max_correspondence_distance << std::endl;
   std::cout << "euclidean_fitness_epsilon: " << euclidean_fitness_epsilon << std::endl;
   std::cout << "ransac_outlier_rejection_threshold: " << ransac_outlier_rejection_threshold << std::endl;
-
   std::cout << "voxel_leaf_size: " << voxel_leaf_size << std::endl;
   std::cout << "min_scan_range: " << min_scan_range << std::endl;
   std::cout << "min_add_scan_shift: " << min_add_scan_shift << std::endl;
@@ -441,7 +486,15 @@ int main(int argc, char** argv)
     current_scan_pub = nh.advertise<sensor_msgs::PointCloud2>("/current_scan", 100, true);
   }
 
-  mkdir(_output_directory.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+  try
+  {
+    mkdir(_output_directory.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+  }
+  catch(...)
+  {
+    std::cout << "ERROR: Failed to access output directory." << std::endl;
+    return -1;
+  }
 
   icp.setMaximumIterations(maximum_iterations);
   icp.setTransformationEpsilon(transformation_epsilon);

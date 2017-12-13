@@ -434,7 +434,6 @@ static void points_callback(const sensor_msgs::PointCloud2::ConstPtr& input)
 
   current_pose_pub.publish(current_pose_msg);
 
-
   std::cout << "-----------------------------------------------------------------" << std::endl;
   std::cout << "Sequence number: " << input->header.seq << std::endl;
   std::cout << "Number of scan points: " << scan_ptr->size() << " points." << std::endl;

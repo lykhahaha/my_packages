@@ -49,8 +49,8 @@
 // #endif
 
 // #include <lidar_pcl/lidar_pcl.h>
-#include <lidar_pcl/struct_types.h>
-#include <lidar_pcl/ndt_corrected_lidar_mapping.h>
+#include <lidar_pcl/data_types.h>
+#include <lidar_pcl/ndt_lidar_mapping.h>
 
 #define EXTRACT_POSE // output pose values to csv file
 

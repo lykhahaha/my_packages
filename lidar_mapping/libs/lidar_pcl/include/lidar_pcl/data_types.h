@@ -1,5 +1,5 @@
-#ifndef DATA_TYPES_H_
-#define DATA_TYPES_H_
+#ifndef LIDAR_PCL_DATA_TYPES_H_
+#define LIDAR_PCL_DATA_TYPES_H_
 
 #include <fstream>
 
@@ -99,12 +99,12 @@ struct Key
   int y;
 };
 
-bool operator==(const Key& lhs, const Key& rhs)
+inline bool operator==(const Key& lhs, const Key& rhs)
 {
   return lhs.x == rhs.x && lhs.y == rhs.y;
 }
 
-bool operator!=(const Key& lhs, const Key& rhs)
+inline bool operator!=(const Key& lhs, const Key& rhs)
 {
   return lhs.x != rhs.x || lhs.y != rhs.y;
 }
@@ -121,4 +121,4 @@ namespace std
   };
 }
 
-#endif // DATA_TYPES_H_
+#endif // LIDAR_PCL_DATA_TYPES_H_

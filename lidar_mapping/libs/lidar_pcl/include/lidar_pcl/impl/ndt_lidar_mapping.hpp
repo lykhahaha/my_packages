@@ -1,7 +1,7 @@
-#ifndef NDT_CORRECTED_LIDAR_MAPPING_IMPL_H_
-#define NDT_CORRECTED_LIDAR_MAPPING_IMPL_H_
+#ifndef LIDAR_PCL_NDT_LIDAR_MAPPING_IMPL_H_
+#define LIDAR_PCL_NDT_LIDAR_MAPPING_IMPL_H_
 
-#include <lidar_pcl/ndt_corrected_lidar_mapping.h>
+// #include <lidar_pcl/ndt_lidar_mapping.h>
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 template <typename PointT>
@@ -402,4 +402,4 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
   updateLocalMap(current_pose_);
 }
 
-#endif // NDT_CORRECTED_LIDAR_MAPPING_H_
+#endif // LIDAR_PCL_NDT_LIDAR_MAPPING_IMPL_H_

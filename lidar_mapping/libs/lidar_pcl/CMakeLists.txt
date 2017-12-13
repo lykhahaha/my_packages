@@ -20,18 +20,18 @@ set(srcs
   src/data_types.cpp
   src/lidar_pcl.cpp
   # src/motion_undistortion.cpp
-  # src/ndt_corrected_lidar_mapping.cpp
+  src/ndt_lidar_mapping.cpp
 )
 
 set(incs 
-  "include/${SUBSYS_NAME}/data_types.h"
-  "include/${SUBSYS_NAME}/lidar_pcl.h"
-  "include/${SUBSYS_NAME}/motion_undistortion.h"
-  # "include/${SUBSYS_NAME}/ndt_corrected_lidar_mapping.h"
+  "include/lidar_pcl/data_types.h"
+  "include/lidar_pcl/lidar_pcl.h"
+  "include/lidar_pcl/motion_undistortion.h"
+  "include/lidar_pcl/ndt_lidar_mapping.h"
 )
 
 set(impl_incs 
-  # "include/${SUBSYS_NAME}/impl/ndt_corrected_lidar_mapping.hpp"
+  "include/lidar_pcl/impl/ndt_lidar_mapping.hpp"
 )
 
 include_directories(${PCL_INCLUDE_DIRS} "${CMAKE_CURRENT_SOURCE_DIR}/include")

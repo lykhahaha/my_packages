@@ -1,5 +1,5 @@
-#ifndef NDT_CORRECTED_LIDAR_MAPPING_H_
-#define NDT_CORRECTED_LIDAR_MAPPING_H_
+#ifndef LIDAR_PCL_NDT_LIDAR_MAPPING_H_
+#define LIDAR_PCL_NDT_LIDAR_MAPPING_H_
 
 // // Basic libs
 // #include <chrono>
@@ -52,7 +52,7 @@
 #endif
 
 // #include <lidar_pcl/lidar_pcl.h>
-// #include <lidar_pcl/data_types.h>
+#include "lidar_pcl/data_types.h"
 
 namespace lidar_pcl
 {
@@ -213,4 +213,6 @@ namespace lidar_pcl
   };
 }
 
-#endif // NDT_CORRECTED_LIDAR_MAPPING_H_
+#include "lidar_pcl/impl/ndt_lidar_mapping.hpp"
+
+#endif // LIDAR_PCL_NDT_LIDAR_MAPPING_H_

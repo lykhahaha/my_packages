@@ -26,7 +26,7 @@ if(CUDA_FOUND)
 endif()
 
 find_package(catkin REQUIRED COMPONENTS
-  # lidar_pcl
+  lidar_pcl
   roscpp
   pcl_ros
   pcl_conversions
@@ -65,6 +65,7 @@ add_executable(mndt src/mndt.cpp)
 add_executable(ndt_mapping src/ndt_mapping.cpp)
 add_executable(large_scale_ndt_mapping src/large_scale_ndt_mapping.cpp)
 add_executable(ground_removed_ndt_mapping src/ground_removed_ndt_mapping.cpp)
+add_executable(custom_ndt_mapping src/custom_ndt_mapping.cpp)
 #add_executable(d2d_ndt_mapping src/d2d_ndt_mapping.cpp)
 
 if(CUDA_FOUND)
@@ -76,11 +77,5 @@ target_link_libraries(mndt ${catkin_LIBRARIES})
 target_link_libraries(ndt_mapping ${catkin_LIBRARIES})
 target_link_libraries(large_scale_ndt_mapping ${catkin_LIBRARIES})
 target_link_libraries(ground_removed_ndt_mapping ${catkin_LIBRARIES})
+target_link_libraries(custom_ndt_mapping ${catkin_LIBRARIES})
 # target_link_libraries(d2d_ndt_mapping ${catkin_LIBRARIES})
-
-# add_dependencies(ndt_matching)
-# add_dependencies(mndt ${catkin_LIBRARIES})
-# add_dependencies(ndt_mapping ${catkin_LIBRARIES})
-# add_dependencies(large_scale_ndt_mapping ${catkin_LIBRARIES})
-# add_dependencies(ground_removed_ndt_mapping ${catkin_LIBRARIES})
-# add_dependencies(d2d_ndt_mapping ${catkin_LIBRARIES})

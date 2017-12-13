@@ -6,6 +6,7 @@
   <arg name="start_time" default="0" /> <!-- all timings are in seconds -->
   <arg name="play_duration" default="260" /> <!-- set negative to play all -->
   <arg name="namespace" default="" /> <!-- set to do multiple mapping at once -->
+  <arg name="output_directory" default="$(env HOME)/ndt_custom/$(arg namespace)/" />
 
   <!-- ndt algorithm params -->
   <arg name="resolution" default="1.2"/> 
@@ -31,6 +32,7 @@
   	<param name="start_time" value="$(arg start_time)" />
   	<param name="play_duration" value="$(arg play_duration)" />
     <param name="namespace" value="$(arg namespace)" />
+    <param name="output_directory" value="$(arg output_directory)" />
 
   	<param name="resolution" value="$(arg resolution)" />
   	<param name="step_size" value="$(arg step_size)" />

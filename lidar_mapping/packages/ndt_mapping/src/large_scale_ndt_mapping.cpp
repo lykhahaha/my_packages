@@ -10,10 +10,11 @@
 #include <vector>
 
 // Libraries for system commands
-#include <cstdlib>
-#include <unistd.h>
+// #include <cstdlib>
+// #include <unistd.h>
 #include <sys/types.h>
-#include <pwd.h>
+#include <sys/stat.h>
+// #include <pwd.h>
 
 #include <boost/foreach.hpp> // to read bag file
 #define foreach BOOST_FOREACH
@@ -26,8 +27,8 @@
 #include <ros/duration.h>
 #include <signal.h>
 #include <sensor_msgs/PointCloud2.h>
-#include <velodyne_pointcloud/point_types.h>
-#include <velodyne_pointcloud/rawdata.h>
+// #include <velodyne_pointcloud/point_types.h>
+// #include <velodyne_pointcloud/rawdata.h>
 
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_datatypes.h>
@@ -150,7 +151,7 @@ static double min_add_scan_yaw_diff = 0.005;
 static float _start_time = 0; // 0 means start playing bag from beginnning
 static float _play_duration = -1; // negative means play everything
 static std::string _bag_file;
-static std::string work_directory;
+static std::string _output_directory;
 static std::string _namespace;
 
 static double _tf_x, _tf_y, _tf_z, _tf_roll, _tf_pitch, _tf_yaw;
@@ -614,14 +615,14 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
 {
   char buffer[100];
   std::strftime(buffer, 100, "%Y%b%d_%H%M", pnow);
-  std::string filename = work_directory + "ndt_" + std::string(buffer) + ".pcd";
+  std::string filename = _output_directory + "ndt_" + std::string(buffer) + ".pcd";
 
   // Write a config file
   char cbuffer[100];
   std::ofstream config_stream;
   std::strftime(cbuffer, 100, "%b%d-%H%M", pnow);
   std::string config_file = "config@" + std::string(cbuffer) + ".txt";
-  config_stream.open(work_directory + config_file);
+  config_stream.open(_output_directory + config_file);
   std::strftime(cbuffer, 100, "%c", pnow);
 
   std::time_t process_end = std::time(NULL);
@@ -633,12 +634,13 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
   config_stream << "Created @ " << std::string(cbuffer) << std::endl;
   config_stream << "Map: " << _bag_file << std::endl;
   config_stream << "Start time: " << _start_time << std::endl;
-  config_stream << "Play duration: " << _play_duration << std::endl;
+  config_stream << "Play duration: " << (_play_duration < 0 ? "all" : std::to_string(_play_duration)) << std::endl;
   config_stream << "Corrected end scan pose: ?\n" << std::endl;
-  config_stream << "###\nResolution: " << ndt_res << std::endl;
+  config_stream << "\nResolution: " << ndt_res << std::endl;
   config_stream << "Step Size: " << step_size << std::endl;
   config_stream << "Transformation Epsilon: " << trans_eps << std::endl;
-  config_stream << "Leaf Size: " << voxel_leaf_size << std::endl;
+  config_stream << "Max Iteration Number: " << max_iter << std::endl;
+  config_stream << "\nLeaf Size: " << voxel_leaf_size << std::endl;
   config_stream << "Minimum Scan Range: " << min_scan_range << std::endl;
   config_stream << "Minimum Add Scan Shift: " << min_add_scan_shift << std::endl;
   config_stream << "Minimum Add Scan Yaw Change: " << min_add_scan_yaw_diff << std::endl;
@@ -722,23 +724,23 @@ int main(int argc, char** argv)
   ros::init(argc, argv, "ndt_mapping", ros::init_options::NoSigintHandler);
   ros::NodeHandle private_nh("~");
 
-  const char *home_directory;
-  if((home_directory = getenv("HOME")) == NULL)
-    home_directory = getpwuid(getuid())->pw_dir; // get home directory
-
   // get setting parameters in the launch files
   private_nh.getParam("bag_file", _bag_file);
   private_nh.getParam("start_time", _start_time);
   private_nh.getParam("play_duration", _play_duration);
   private_nh.getParam("namespace", _namespace);
+  private_nh.getParam("output_directory", _output_directory);
+
   private_nh.getParam("resolution", ndt_res);
   private_nh.getParam("step_size", step_size);  
   private_nh.getParam("transformation_epsilon", trans_eps);
   private_nh.getParam("max_iteration", max_iter);
+
   private_nh.getParam("voxel_leaf_size", voxel_leaf_size);
   private_nh.getParam("min_scan_range", min_scan_range);
   private_nh.getParam("min_add_scan_shift", min_add_scan_shift);
   private_nh.getParam("min_add_scan_yaw_diff", min_add_scan_yaw_diff);
+
   private_nh.getParam("tf_x", _tf_x);
   private_nh.getParam("tf_y", _tf_y);
   private_nh.getParam("tf_z", _tf_z);
@@ -750,8 +752,7 @@ int main(int argc, char** argv)
   std::cout << "bag_file: " << _bag_file << std::endl;
   std::cout << "start_time: " << _start_time << std::endl;
   std::cout << "play_duration: " << _play_duration << std::endl;
-  if(_namespace.size() > 0)
-    std::cout << "namespace: " << _namespace << std::endl;
+  std::cout << "namespace: " << (_namespace.size() > 0 ? _namespace : "N/A") << std::endl;
   std::cout << "ndt_res: " << ndt_res << std::endl;
   std::cout << "step_size: " << step_size << std::endl;
   std::cout << "trans_epsilon: " << trans_eps << std::endl;
@@ -771,16 +772,23 @@ int main(int argc, char** argv)
     ndt_map_pub = nh.advertise<sensor_msgs::PointCloud2>(_namespace + "/local_map", 1000, true);
     current_scan_pub = nh.advertise<sensor_msgs::PointCloud2>(_namespace + "/current_scan", 1, true);
     original_scan_pub = nh.advertise<sensor_msgs::PointCloud2>(_namespace + "/source_scan", 1, true);
-    work_directory = std::string(home_directory) + "/ndt_custom/" + _namespace + "/";
   }
   else
   {
     ndt_map_pub = nh.advertise<sensor_msgs::PointCloud2>("/local_map", 1000, true);
     current_scan_pub = nh.advertise<sensor_msgs::PointCloud2>("/current_scan", 1, true);
     original_scan_pub = nh.advertise<sensor_msgs::PointCloud2>("/source_scan", 1, true);
-    work_directory = std::string(home_directory) + "/ndt_custom/";
   }
-  std::cout << "Results are stored in: " << work_directory << std::endl;
+
+  try
+  {
+    mkdir(_output_directory.c_str(), S_IRWXU | S_IRWXG | S_IROTH | S_IXOTH);
+  }
+  catch(...)
+  {
+    std::cout << "ERROR: Failed to access output directory." << std::endl;
+    return -1;
+  }
 
 #ifdef USE_GPU_PCL
   gpu_ndt.setTransformationEpsilon(trans_eps);
@@ -809,7 +817,7 @@ int main(int argc, char** argv)
   local_map.header.frame_id = "map";
 
 #ifdef MY_EXTRACT_SCANPOSE // map_pose.csv
-  csv_stream.open(work_directory + csv_filename);
+  csv_stream.open(_output_directory + csv_filename);
   csv_stream << "key,sequence,sec,nsec,x,y,z,roll,pitch,yaw" << std::endl;
 #endif // MY_EXTRACT_SCANPOSE
 
