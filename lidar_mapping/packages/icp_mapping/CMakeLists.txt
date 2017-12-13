@@ -2,12 +2,14 @@ cmake_minimum_required(VERSION 2.8.3)
 project(icp_mapping)
 
 find_package(PCL REQUIRED)
+
 find_package(catkin REQUIRED COMPONENTS
+  autoware_msgs
+  lidar_pcl
   roscpp
   pcl_ros
-  sensor_msgs
-  autoware_msgs
   pcl_conversions
+  sensor_msgs
   velodyne_pointcloud
 )
 
@@ -19,7 +21,7 @@ roslaunch_add_file_check(launch)
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES ndt_pcl
-  CATKIN_DEPENDS std_msgs velodyne_pointcloud autoware_msgs
+  CATKIN_DEPENDS std_msgs velodyne_pointcloud autoware_msgs lidar_pcl
 #  DEPENDS system_lib
 )
 

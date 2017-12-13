@@ -52,7 +52,7 @@
 #endif
 
 // #include <lidar_pcl/lidar_pcl.h>
-#include <lidar_pcl/struct_types.h>
+// #include <lidar_pcl/data_types.h>
 
 namespace lidar_pcl
 {

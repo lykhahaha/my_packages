@@ -87,7 +87,7 @@
 #include <pcl/filters/voxel_grid.h>
 #endif
 
-#include <lidar_pcl/lidar_pcl.h>
+// #include <lidar_pcl/lidar_pcl.h>
 
 // Here are the functions I wrote. De-comment to use
 #define TILE_WIDTH 35 // Maximum range of LIDAR 32E is 70m
@@ -248,7 +248,8 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
 
   current_scan_time = input->header.stamp;
 
-  lidar_pcl::fromROSMsg(*input, tmp); // note here
+  // lidar_pcl::fromROSMsg(*input, tmp); // note here
+  pcl::fromROSMsg(*input, tmp);
 
   for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = tmp.begin(); item != tmp.end(); item++)
   {

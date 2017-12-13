@@ -147,13 +147,13 @@ SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -Wall -fopenmp -DUSE_FAST_PCL ${CMAKE_CXX
 macro(add_new_node name)
   add_executable(${name} src/${name}.cpp)
   add_dependencies(${name} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg)
-  target_link_libraries(${name} ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
+  target_link_libraries(${name} ${catkin_LIBRARIES})
 endmacro()
 
 macro(add_new_opencv_node name)
   add_executable(${name} src/${name}.cpp)
   add_dependencies(${name} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg)
-  target_link_libraries(${name} ${catkin_LIBRARIES})
+  target_link_libraries(${name} ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
 endmacro()
 
 macro(add_new_autoware_node name)

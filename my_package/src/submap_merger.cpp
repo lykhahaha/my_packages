@@ -3,6 +3,7 @@
 #include <sstream>
 #include <string>
 #include <cstddef>
+#include <unordered_map>
 
 #include <ros/ros.h>
 #include <ros/time.h>
@@ -18,14 +19,13 @@
 #include <pcl/io/ply_io.h>
 #include <pcl/point_cloud.h>
 #include <pcl/common/common.h>
+#include <pcl/filters/voxel_grid.h>
 #include <pcl_ros/transforms.h>
 #include <pcl_conversions/pcl_conversions.h>
+#define TILE_WIDTH 35
 
-#define PUBLISH_OUTPUT
+// #define PUBLISH_OUTPUT
 // #define WRITE_CORRECTED_SCAN_TO_BAG
-
-static pcl::PointCloud<pcl::PointXYZI> local_map;
-static Key local_key, previous_key;
 
 struct pose
 {
@@ -74,6 +74,10 @@ namespace std
     }
   };
 }
+
+static std::unordered_map<Key, pcl::PointCloud<pcl::PointXYZI>> world_map;
+static pcl::PointCloud<pcl::PointXYZI> local_map;
+static Key local_key, previous_key;
 
 inline double getYawAngle(double _x, double _y)
 {
@@ -171,7 +175,6 @@ static void map_maintenance_callback(pose local_pose)
   // Only update local_map through world_map only if local_key changes
   if(local_key != previous_key)
   {
-    std::lock_guard<std::mutex> lck(mtx);
     // Get local_map, a 3x3 tile map with the center being the local_key
     local_map.clear();
     Key tmp_key;
@@ -448,10 +451,10 @@ int main(int argc, char** argv)
     // voxel_grid_filter.filter(*filtered_scan_ptr);
     map += dst;
     // pcl::PointCloud<pcl::PointXYZI>::Ptr filtered_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>());
+    
+   #ifdef PUBLISH_OUTPUT
     static int map_count = 0;
     static int map_loop = 5;
-
-   #ifdef PUBLISH_OUTPUT
     sensor_msgs::PointCloud2::Ptr scan_msg_ptr(new sensor_msgs::PointCloud2);
     pcl::toROSMsg(dst, *scan_msg_ptr);
     scan_msg_ptr->header.frame_id = "map";
@@ -500,7 +503,9 @@ int main(int argc, char** argv)
     prev_transform = crnt_transform;
     prev_time = crnt_time;
     isGetLine = false;
+   #ifdef PUBLISH_OUTPUT
     rosrate.sleep();
+   #endif
   }
   bag.close();
   std::cout << "Finished processing bag file. Saving to pcd..." << std::endl;

@@ -27,12 +27,12 @@ endif()
 
 find_package(catkin REQUIRED COMPONENTS
   autoware_msgs
+  # lidar_pcl
   roscpp
   pcl_ros
   pcl_conversions
   sensor_msgs
   velodyne_pointcloud
-  lidar_pcl
   ndt_registration
   ${FAST_PCL_PACKAGES}
 )
@@ -43,7 +43,7 @@ find_package(catkin REQUIRED COMPONENTS
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES ndt_pcl
-  CATKIN_DEPENDS std_msgs velodyne_pointcloud autoware_msgs lidar_pcl ${FAST_PCL_PACKAGES}
+  CATKIN_DEPENDS std_msgs velodyne_pointcloud autoware_msgs ${FAST_PCL_PACKAGES}
 #  DEPENDS system_lib
 )
 

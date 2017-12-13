@@ -1,5 +1,5 @@
-#ifndef STRUCT_TYPES_H_
-#define STRUCT_TYPES_H_
+#ifndef DATA_TYPES_H_
+#define DATA_TYPES_H_
 
 #include <fstream>
 
@@ -121,4 +121,4 @@ namespace std
   };
 }
 
-#endif // STRUCT_TYPES_H_
+#endif // DATA_TYPES_H_

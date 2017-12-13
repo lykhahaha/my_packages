@@ -25,8 +25,6 @@
 #include <ros/time.h>
 #include <ros/duration.h>
 #include <signal.h>
-#include <std_msgs/Bool.h>
-#include <std_msgs/Float32.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <velodyne_pointcloud/point_types.h>
 #include <velodyne_pointcloud/rawdata.h>
@@ -59,7 +57,6 @@
 #define MY_EXTRACT_SCANPOSE // do not use this, this is to extract scans and poses to close loop
 // #define LIMIT_HEIGHT 3.0 // filter out high points when aligning
 // #define CORRECT_SCAN_DEBUG
-static int add_scan_number = 1; // added frame count
 
 #ifdef MY_EXTRACT_SCANPOSE
 std::ofstream csv_stream;
@@ -117,6 +114,7 @@ namespace std
 // global variables
 static pose previous_pose, guess_pose, current_pose, ndt_pose, added_pose, localizer_pose;
 static Eigen::Affine3d current_pose_tf, previous_pose_tf, relative_pose_tf;
+static ros::Publisher ndt_map_pub, current_scan_pub, original_scan_pub;
 
 static ros::Time current_scan_time;
 static ros::Time previous_scan_time;
@@ -124,10 +122,9 @@ static ros::Duration scan_duration;
 
 static double diff, diff_x, diff_y, diff_z, diff_roll, diff_pitch, diff_yaw; // current_pose - previous_pose
 static double secs = 0.100085; // scan duration
-static velocity current_velocity;
+// static velocity current_velocity;
 
 static std::unordered_map<Key, pcl::PointCloud<pcl::PointXYZI>> world_map;
-// static pcl::PointCloud<pcl::PointXYZI> map;
 static pcl::PointCloud<pcl::PointXYZI> local_map;
 static std::mutex mtx;
 static Key local_key, previous_key;
@@ -137,34 +134,31 @@ static gpu::GNormalDistributionsTransform gpu_ndt;
 #else
 static pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI> ndt;
 #endif
+
 // Default NDT algorithm param values
 static int max_iter = 300;       // Maximum iterations
 static float ndt_res = 2.8;      // Resolution
 static double step_size = 0.05;   // Step size
 static double trans_eps = 0.001;  // Transformation epsilon
 
-// Workspace params
-static float _start_time = 0; // 0 means start playing bag from beginnning
-static float _play_duration = -1; // negative means play everything
+static double voxel_leaf_size = 0.1;
 static double min_scan_range = 2.0;
 static double min_add_scan_shift = 1.0;
 static double min_add_scan_yaw_diff = 0.005;
+
+// Workspace params
+static float _start_time = 0; // 0 means start playing bag from beginnning
+static float _play_duration = -1; // negative means play everything
 static std::string _bag_file;
 static std::string work_directory;
 static std::string _namespace;
 
-// Leaf size of VoxelGrid filter.
-static double voxel_leaf_size = 0.1;
-
-static ros::Publisher ndt_map_pub, current_scan_pub, original_scan_pub;
-
-static int initial_scan_loaded = 0;
-
 static double _tf_x, _tf_y, _tf_z, _tf_roll, _tf_pitch, _tf_yaw;
 static Eigen::Matrix4f tf_btol, tf_ltob;
 
+static int add_scan_number = 1; // added frame count
+static int initial_scan_loaded = 0;
 static bool isMapUpdate = true;
-
 static double fitness_score;
 static bool has_converged;
 static int final_num_iteration;
@@ -372,9 +366,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   Eigen::AngleAxisf init_rotation_x(guess_pose.roll, Eigen::Vector3f::UnitX());
   Eigen::AngleAxisf init_rotation_y(guess_pose.pitch, Eigen::Vector3f::UnitY());
   Eigen::AngleAxisf init_rotation_z(guess_pose.yaw, Eigen::Vector3f::UnitZ());
-
   Eigen::Translation3f init_translation(guess_pose.x, guess_pose.y, guess_pose.z);
-
   Eigen::Matrix4f init_guess =
       (init_translation * init_rotation_z * init_rotation_y * init_rotation_x).matrix() * tf_btol;
   
@@ -418,6 +410,7 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
                  static_cast<double>(t_base_link(1, 1)), static_cast<double>(t_base_link(1, 2)),
                  static_cast<double>(t_base_link(2, 0)), static_cast<double>(t_base_link(2, 1)),
                  static_cast<double>(t_base_link(2, 2)));
+
   // Update localizer_pose.
   localizer_pose.x = t_localizer(0, 3);
   localizer_pose.y = t_localizer(1, 3);
@@ -440,9 +433,9 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
                          current_pose.roll, current_pose.pitch, current_pose.yaw,
                          current_pose_tf);
 
-  transform.setOrigin(tf::Vector3(current_pose.x, current_pose.y, current_pose.z));
-  q.setRPY(current_pose.roll, current_pose.pitch, current_pose.yaw);
-  transform.setRotation(q);
+  // transform.setOrigin(tf::Vector3(current_pose.x, current_pose.y, current_pose.z));
+  // q.setRPY(current_pose.roll, current_pose.pitch, current_pose.yaw);
+  // transform.setRotation(q); // duplicate??
 
   // Calculate the offset (curren_pos - previous_pos)
   diff_x = current_pose.x - previous_pose.x;
@@ -454,10 +447,11 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
   diff = sqrt(diff_x * diff_x + diff_y * diff_y + diff_z * diff_z);
   
   // Calculate the shift between added_pos and current_pos
-  double shift = sqrt(pow(current_pose.x - added_pose.x, 2.0) + pow(current_pose.y - added_pose.y, 2.0));
+  double t_shift = sqrt(pow(current_pose.x - added_pose.x, 2.0) + pow(current_pose.y - added_pose.y, 2.0));
+  double R_shift = std::fabs(current_pose.yaw - added_pose.yaw);
   t1 = std::chrono::system_clock::now();
   pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, t_localizer);
-  if(shift >= min_add_scan_shift || std::fabs(diff_yaw) >= min_add_scan_yaw_diff)
+  if(t_shift >= min_add_scan_shift || R_shift >= min_add_scan_yaw_diff)
   {
 #ifdef MY_EXTRACT_SCANPOSE
 
@@ -516,22 +510,20 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
                    << (poseA.yaw - poseB.yaw) << ")" << std::endl;
   #endif // CORRECT_SCAN_DEBUG
 
-  // The rest of the code
   transform.setOrigin(tf::Vector3(current_pose.x, current_pose.y, current_pose.z));
   q.setRPY(current_pose.roll, current_pose.pitch, current_pose.yaw);
   transform.setRotation(q);
-
   br.sendTransform(tf::StampedTransform(transform, current_scan_time, "map", "base_link"));
 
   scan_duration = current_scan_time - previous_scan_time;
   secs = scan_duration.toSec();
 
-  current_velocity.x = diff_x / secs;
-  current_velocity.y = diff_y / secs;
-  current_velocity.z = diff_z / secs;
-  current_velocity.roll = diff_roll / secs;
-  current_velocity.pitch = diff_pitch / secs;
-  current_velocity.yaw = diff_yaw / secs;
+  // current_velocity.x = diff_x / secs;
+  // current_velocity.y = diff_y / secs;
+  // current_velocity.z = diff_z / secs;
+  // current_velocity.roll = diff_roll / secs;
+  // current_velocity.pitch = diff_pitch / secs;
+  // current_velocity.yaw = diff_yaw / secs;
   relative_pose_tf = previous_pose_tf.inverse() * current_pose_tf;
 
   // Update position and posture. current_pos -> previous_pos
@@ -582,8 +574,8 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
             << ", " << current_pose.pitch << ", " << current_pose.yaw << ")\n";
   // std::cout << "Transformation Matrix:\n";
   // std::cout << t_localizer << "\n";
-  std::cout << "Shift: " << shift << "\n";
-  std::cout << "Yaw Diff: " << diff_yaw << "\n";
+  std::cout << "Translation shift: " << t_shift << "\n";
+  std::cout << "Rotation (yaw) shift: " << R_shift << "\n";
   std::cout << "Update target map took: " << ndt_update_time << "ms.\n";
   std::cout << "NDT matching took: " << ndt_align_time << "ms.\n";
   std::cout << "Updating map took: " << ndt_keyscan_time << "ms.\n";
@@ -719,9 +711,9 @@ int main(int argc, char** argv)
   diff_z = 0.0;
   diff_yaw = 0.0;
 
-  current_velocity.x = 0;
-  current_velocity.y = 0;
-  current_velocity.z = 0;
+  // current_velocity.x = 0;
+  // current_velocity.y = 0;
+  // current_velocity.z = 0;
 
   pcl::getTransformation(0, 0, 0, 0, 0, 0, current_pose_tf);
   pcl::getTransformation(0, 0, 0, 0, 0, 0, previous_pose_tf);

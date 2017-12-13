@@ -5,7 +5,7 @@ find_package(catkin REQUIRED COMPONENTS)
 find_package(PCL REQUIRED)
 
 set(SUBSYS_NAME lidar_pcl)
-set(SUBSYS_DESC "Point cloud library for LIDAR")
+set(SUBSYS_DESC "Point cloud library for LIDAR mapping")
 # set(SUBSYS_DEPS )
 
 set(LIB_NAME "lidar_pcl")
@@ -17,18 +17,21 @@ catkin_package(
   )
 
 set(srcs
+  src/data_types.cpp
   src/lidar_pcl.cpp
-  src/ndt_corrected_lidar_mapping.cpp
+  # src/motion_undistortion.cpp
+  # src/ndt_corrected_lidar_mapping.cpp
 )
 
 set(incs 
+  "include/${SUBSYS_NAME}/data_types.h"
   "include/${SUBSYS_NAME}/lidar_pcl.h"
-  "include/${SUBSYS_NAME}/struct_types.h"
-  "include/${SUBSYS_NAME}/ndt_corrected_lidar_mapping.h"
+  "include/${SUBSYS_NAME}/motion_undistortion.h"
+  # "include/${SUBSYS_NAME}/ndt_corrected_lidar_mapping.h"
 )
 
 set(impl_incs 
-  "include/${SUBSYS_NAME}/impl/ndt_corrected_lidar_mapping.hpp"
+  # "include/${SUBSYS_NAME}/impl/ndt_corrected_lidar_mapping.hpp"
 )
 
 include_directories(${PCL_INCLUDE_DIRS} "${CMAKE_CURRENT_SOURCE_DIR}/include")
