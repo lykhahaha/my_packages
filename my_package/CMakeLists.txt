@@ -142,7 +142,7 @@ include_directories(include ${catkin_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${CERE
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
 
-SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -Wall -DUSE_FAST_PCL ${CMAKE_CXX_FLAGS}")
+SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -Wall -fopenmp -DUSE_FAST_PCL ${CMAKE_CXX_FLAGS}")
 
 macro(add_new_node name)
   add_executable(${name} src/${name}.cpp)
@@ -195,3 +195,4 @@ add_new_node(transform_trajectory)
 add_new_node(get_perspective_scan)
 add_new_node(quickscript)
 add_new_node(scan_from_bag_to_txt)
+add_new_node(visualize_pose)

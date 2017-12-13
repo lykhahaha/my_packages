@@ -1,0 +1,58 @@
+<?xml version="1.0" ?>
+<launch>
+
+  <!-- send table.xml to param server -->
+  <arg name="bag" default="/home/zwu/LIDAR-DATA/3oct-around-pana1.bag" />
+  <arg name="start_time" default="0" /> <!-- all timings are in seconds -->
+  <arg name="play_duration" default="260" /> <!-- set negative to play all -->
+  <arg name="namespace" default="" /> <!-- set to do multiple mapping at once -->
+  <arg name="output_directory" default="/home/zwu/icp_custom/$(arg namespace)" />
+
+  <!-- icp algorithm params -->
+  <arg name="maximum_iterations" default="200" />
+  <arg name="transformation_epsilon" default="0.00001" />
+  <arg name="max_correspondence_distance" default="0.5" />
+  <arg name="euclidean_fitness_epsilon" default="0.0001" />
+  <arg name="ransac_outlier_rejection_threshold" default="0.5" />
+
+  <arg name="voxel_leaf_size" default="0.0" />
+  <arg name="min_scan_range" default="2.0" />
+  <arg name="min_add_scan_shift" default="0.5" />
+  <arg name="min_add_scan_yaw_diff" default="0.013" />
+
+  <!-- tf from lidar frame to car frame -->
+  <arg name="tf_x" default="1.2"/>
+  <arg name="tf_y" default="0.0"/>
+  <arg name="tf_z" default="2.0"/>
+  <arg name="tf_roll" default="0.0"/>
+  <arg name="tf_pitch" default="0.0"/>
+  <arg name="tf_yaw" default="0.0"/>
+
+  <!-- rosrun icp_mapping icp_mapping  -->
+  <node pkg="icp_mapping" type="icp_point2plane_mapping" name="icp_point2plane_mapping" output="screen">
+    <param name="bag_file" value="$(arg bag)" />
+    <param name="start_time" value="$(arg start_time)" />
+    <param name="play_duration" value="$(arg play_duration)" />
+    <param name="namespace" value="$(arg namespace)" />
+    <param name="output_directory" value="$(arg output_directory)" />   
+    
+    <param name="maximum_iterations" value="$(arg maximum_iterations)" />
+    <param name="transformation_epsilon" value="$(arg transformation_epsilon)" />
+    <param name="max_correspondence_distance" value="$(arg max_correspondence_distance)" />
+    <param name="euclidean_fitness_epsilon" value="$(arg euclidean_fitness_epsilon)" />
+    <param name="ransac_outlier_rejection_threshold" value="$(arg ransac_outlier_rejection_threshold)" />
+
+    <param name="voxel_leaf_size" value="$(arg voxel_leaf_size)" />
+    <param name="min_scan_range" value="$(arg min_scan_range)" />
+    <param name="min_add_scan_shift" value="$(arg min_add_scan_shift)" />
+    <param name="min_add_scan_yaw_diff" value="$(arg min_add_scan_yaw_diff)" />
+
+    <param name="tf_x" value="$(arg tf_x)" />
+    <param name="tf_y" value="$(arg tf_y)" />
+    <param name="tf_z" value="$(arg tf_z)" />
+    <param name="tf_roll" value="$(arg tf_roll)" />
+    <param name="tf_pitch" value="$(arg tf_pitch)" />
+    <param name="tf_yaw" value="$(arg tf_yaw)" />  
+  </node>
+  
+</launch>

@@ -21,11 +21,8 @@
 #include <pcl_ros/transforms.h>
 #include <pcl_conversions/pcl_conversions.h>
 
-#define PUBLISH_OUTPUT
-// #define WRITE_CORRECTED_SCAN_TO_BAG
-
-static pcl::PointCloud<pcl::PointXYZI> local_map;
-static Key local_key, previous_key;
+#include <tf/transform_broadcaster.h>
+#include <tf/transform_datatypes.h>
 
 struct pose
 {
@@ -46,34 +43,6 @@ struct velocity
   double pitch;
   double yaw;
 };
-
-struct Key
-{
-  int x;
-  int y;
-};
-
-bool operator==(const Key& lhs, const Key& rhs)
-{
-  return lhs.x == rhs.x && lhs.y == rhs.y;
-}
-
-bool operator!=(const Key& lhs, const Key& rhs)
-{
-  return lhs.x != rhs.x || lhs.y != rhs.y;
-}
-
-namespace std
-{
-  template <>
-  struct hash<Key> // custom hashing function for Key<(x,y)>
-  {
-    std::size_t operator()(const Key& k) const
-    {
-      return hash<int>()(k.x) ^ (hash<int>()(k.y) << 1);
-    }
-  };
-}
 
 inline double getYawAngle(double _x, double _y)
 {
@@ -145,68 +114,45 @@ void correctLIDARscan(pcl::PointCloud<pcl::PointXYZI>& scan, Eigen::Affine3d rel
   }
 }
 
-static void add_new_scan(const pcl::PointCloud<pcl::PointXYZI> new_scan)
-{
-  for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = new_scan.begin(); item < new_scan.end(); item++)
-  {
-    // Get 2D point
-    Key key;
-    key.x = int(floor(item->x / TILE_WIDTH));
-    key.y = int(floor(item->y / TILE_WIDTH));
-
-    world_map[key].push_back(*item);
-  }
-
-  local_map += new_scan;
-}
-
-static void map_maintenance_callback(pose local_pose)
-{
-  // Get local_key
-  local_key = {int(floor(local_pose.x / TILE_WIDTH)),  // .x
-               int(floor(local_pose.y / TILE_WIDTH))}; // .y
-  // local_key.x = int(floor(local_pose.x / TILE_WIDTH));
-  // local_key.y = int(floor(local_pose.y / TILE_WIDTH));
-
-  // Only update local_map through world_map only if local_key changes
-  if(local_key != previous_key)
-  {
-    std::lock_guard<std::mutex> lck(mtx);
-    // Get local_map, a 3x3 tile map with the center being the local_key
-    local_map.clear();
-    Key tmp_key;
-    for(int x = local_key.x - 2, x_max = local_key.x + 2; x <= x_max; x++)
-      for(int y = local_key.y - 2, y_max = local_key.y + 2; y <= y_max; y++)
-      {
-        tmp_key.x = x;
-        tmp_key.y = y;
-        local_map += world_map[tmp_key];
-      }
-
-    // Update key
-    previous_key = local_key;
-  }
-}
-
 int main(int argc, char** argv)
 {
   // Initiate and get csv file
   ros::init(argc, argv, "submap_merger");
- #ifdef PUBLISH_OUTPUT
   ros::NodeHandle nh;
   ros::Rate rosrate(5);
   ros::Publisher scan_pub = nh.advertise<sensor_msgs::PointCloud2>("/current_scan", 100, true);
   ros::Publisher map_pub = nh.advertise<sensor_msgs::PointCloud2>("/ndt_map", 100, true);
- #endif
 
-  if(argc < 3)
+  if(argc < 4)
   {
     // std::cout << "Please indicate the bag file corresponding to the map_pose.csv." << std::endl;
     std::cout << "ERROR: Missing user inputs." << std::endl;
-    std::cout << "!! rosrun my_package submap_merger \"posefile.csv\" \"bagfile.bag\" [min_scan_range]" << std::endl;
+    std::cout << "!! rosrun my_package submap_merger \"posefile.csv\" \"mapfile.pcd\" \"bagfile.bag\" [min_scan_range]" << std::endl;
     return -1;
   }
-  std::string bagfile = argv[2];
+
+  // pose data
+  std::string csvfile = argv[1];
+  std::cout << "Reading " << csvfile << " in the current directory.\n";
+  std::cout << "Please ensure that the format of the csv file is:" << std::endl;
+  std::cout << "\t{sequence, sec, nsec, x, y, z, roll, pitch, yaw}" << std::endl;
+  std::ifstream csv_stream(csvfile);
+
+  // map data
+  pcl::PointCloud<pcl::PointXYZI> map_src;
+  if(pcl::io::loadPCDFile<pcl::PointXYZI>(argv[2], map_src) == -1)
+  {
+    std::cout << "Couldn't read " << argv[2] << "." << std::endl;
+    return(-1);
+  }
+  std::cout << "Loaded " << map_src.size() << " data points from " << argv[2] << std::endl;
+  sensor_msgs::PointCloud2::Ptr map_msg_ptr(new sensor_msgs::PointCloud2);
+  pcl::toROSMsg(map_src, *map_msg_ptr);
+  map_msg_ptr->header.frame_id = "map";
+  map_pub.publish(map_msg_ptr);
+
+  // scan data
+  std::string bagfile = argv[3];
   std::string bagtopic = "/points_raw";
   std::cout << "Reading bag: " << bagfile << " [topic: " << bagtopic << "]... " << std::flush;
   rosbag::Bag bag(bagfile, rosbag::bagmode::Read);
@@ -216,22 +162,11 @@ int main(int argc, char** argv)
   std::cout << "Done." << std::endl;
 
   double min_scan_range = 0;
-  if(argc == 4)
+  if(argc == 5)
   {
-    min_scan_range = std::stod(argv[3]);
+    min_scan_range = std::stod(argv[4]);
     std::cout << "Using min_scan_range = " << min_scan_range << std::endl;
   }
-
-  std::string csvfile = argv[1];
-  std::cout << "Reading " << csvfile << " in the current directory.\n";
-  std::cout << "Please ensure that the format of the csv file is:" << std::endl;
-  std::cout << "\t{key, sequence, sec, nsec, x, y, z, roll, pitch, yaw}" << std::endl;
-  std::ifstream csv_stream(csvfile);
-
- #ifdef WRITE_CORRECTED_SCAN_TO_BAG
-  rosbag::Bag corrected_bag;
-  corrected_bag.open("corrected_scan.bag", rosbag::bagmode::Write);
- #endif // WRITE_CORRECTED_SCAN_TO_BAG
 
   // Place-holder for variables
   pcl::PointCloud<pcl::PointXYZI> map;
@@ -245,8 +180,6 @@ int main(int argc, char** argv)
 
   getline(csv_stream, line); // to skip header line
   std::cout << "Finished. Starting merging submaps..." << std::endl;
-  pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_filter;
-  voxel_grid_filter.setLeafSize(0.3, 0.3, 0.3);
   foreach(rosbag::MessageInstance const message, view)
   {
     // get new data and process values
@@ -262,8 +195,8 @@ int main(int argc, char** argv)
     std::cout << line << std::endl;
     std::stringstream line_stream(line);
 
-    getline(line_stream, key_str, ',');
-    key = std::stod(key_str);
+    // getline(line_stream, key_str, ',');
+    // key = std::stod(key_str);
 
     getline(line_stream, seq_str, ',');
     seq = std::stod(seq_str);
@@ -321,102 +254,13 @@ int main(int argc, char** argv)
       interval = (crnt_time - prev_time).toSec();
       rel_transform = prev_transform.inverse() * crnt_transform;
     }
-#ifdef WRITE_CORRECTED_SCAN_TO_BAG
-    // Correct point cloud first
-    pcl::PointCloud<pcl::PointXYZI> src, fsrc, dst;
-    pcl::fromROSMsg(*input_cloud, src);
-    correctLIDARscan(src, rel_transform, interval);
-
-    if(argc == 4)
-    {
-      // Filter pointcloud
-      pcl::PointXYZI p;
-      for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = src.begin(); item != src.end(); item++)
-      {
-        p.x = (double)item->x;
-        p.y = (double)item->y;
-        p.z = (double)item->z;
-        p.intensity = (double)item->intensity;
-
-        r = sqrt(pow(p.x, 2.0) + pow(p.y, 2.0));
-        if(r > min_scan_range)
-        {
-          fsrc.push_back(p);
-        }
-      }
-    }
-    else fsrc = src;
-
-    // Add to bag regardless of key
-    sensor_msgs::PointCloud2::Ptr scan_msg_ptr(new sensor_msgs::PointCloud2);
-    pcl::toROSMsg(fsrc, *scan_msg_ptr);
-    scan_msg_ptr->header.seq = input_cloud->header.seq;
-    scan_msg_ptr->header.stamp = input_cloud->header.stamp;
-    scan_msg_ptr->header.frame_id = input_cloud->header.frame_id;
-    corrected_bag.write("/velodyne_points", 
-                        ros::Time(input_cloud->header.stamp.sec, input_cloud->header.stamp.nsec), 
-                        *scan_msg_ptr);
-
-    // Skip unadded scan (has key = 0)
-    if(key == 0)
-    {
-      std::cout << "Skipping unadded scan." << std::endl;
-      prev_transform = crnt_transform;
-      prev_time = crnt_time;
-      isGetLine = false;
-      continue;
-    }
-#else
-    // Skip unadded scan (has key = 0)
-    if(key == 0)
-    {
-     #ifdef PUBLISH_OUTPUT
-      // Correct point cloud first
-      pcl::PointCloud<pcl::PointXYZI> src, fsrc, dst;
-      pcl::fromROSMsg(*input_cloud, src);
-      correctLIDARscan(src, rel_transform, interval);
-
-      if(argc == 4)
-      {
-        // Filter pointcloud
-        pcl::PointXYZI p;
-        for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = src.begin(); item != src.end(); item++)
-        {
-          p.x = (double)item->x;
-          p.y = (double)item->y;
-          p.z = (double)item->z;
-          p.intensity = (double)item->intensity;
-          if((sqrt(pow(p.x, 2.0) + pow(p.y, 2.0))) > min_scan_range)
-          {
-            fsrc.push_back(p);
-          }
-        }
-      }
-      else fsrc = src;
-
-      // Transform the corrected pointcloud
-      pcl::transformPointCloud(fsrc, dst, crnt_transform);
-
-      sensor_msgs::PointCloud2::Ptr scan_msg_ptr(new sensor_msgs::PointCloud2);
-      pcl::toROSMsg(dst, *scan_msg_ptr);
-      scan_msg_ptr->header.frame_id = "map";
-      scan_pub.publish(scan_msg_ptr);
-      rosrate.sleep();
-     #endif // PUBLISH_OUTPUT
-
-      std::cout << "Skipping unadded scan." << std::endl;
-      prev_transform = crnt_transform;
-      prev_time = crnt_time;
-      isGetLine = false;
-      continue;
-    }
 
     // Correct point cloud first
     pcl::PointCloud<pcl::PointXYZI> src, fsrc, dst;
     pcl::fromROSMsg(*input_cloud, src);
     correctLIDARscan(src, rel_transform, interval);
 
-    if(argc == 4)
+    if(argc == 5)
     {
       // Filter pointcloud
       pcl::PointXYZI p;
@@ -434,43 +278,25 @@ int main(int argc, char** argv)
     }
     else fsrc = src;
     // pcl::io::savePCDFileBinary(key_str + ".pcd", fsrc);
-#endif // WRITE_CORRECTED_SCAN_TO_BAG
 
     // Transform the corrected pointcloud
     pcl::transformPointCloud(fsrc, dst, crnt_transform);
 
     // Add to map
-    // pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_filter;
-    // pcl::PointCloud<pcl::PointXYZI>::Ptr dst_ptr(new pcl::PointCloud<pcl::PointXYZI>(dst));
-    // pcl::PointCloud<pcl::PointXYZI>::Ptr filtered_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>());
-    // voxel_grid_filter.setLeafSize(0.4, 0.4, 0.4);
-    // voxel_grid_filter.setInputCloud(dst_ptr);
-    // voxel_grid_filter.filter(*filtered_scan_ptr);
     map += dst;
-    // pcl::PointCloud<pcl::PointXYZI>::Ptr filtered_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>());
-    static int map_count = 0;
-    static int map_loop = 5;
 
-   #ifdef PUBLISH_OUTPUT
+    tf::TransformBroadcaster br;
+    tf::Transform transform;
+    tf::Quaternion q;
+    transform.setOrigin(tf::Vector3(x, y, z));
+    q.setRPY(roll, pitch, yaw);
+    transform.setRotation(q);
+    br.sendTransform(tf::StampedTransform(transform, input_cloud->header.stamp, "map", "base_link"));
+
     sensor_msgs::PointCloud2::Ptr scan_msg_ptr(new sensor_msgs::PointCloud2);
     pcl::toROSMsg(dst, *scan_msg_ptr);
     scan_msg_ptr->header.frame_id = "map";
     scan_pub.publish(scan_msg_ptr);
-
-    // static int count = 0;
-    if(map_count == map_loop)
-    {
-      pcl::PointCloud<pcl::PointXYZI>::Ptr map_ptr(new pcl::PointCloud<pcl::PointXYZI>(map));
-      voxel_grid_filter.setInputCloud(map_ptr);
-      voxel_grid_filter.filter(*filtered_scan_ptr);
-      sensor_msgs::PointCloud2::Ptr map_msg_ptr(new sensor_msgs::PointCloud2);
-      pcl::toROSMsg(map, *map_msg_ptr);
-      map_msg_ptr->header.frame_id = "map";
-      map_pub.publish(map_msg_ptr);
-      map_count = -1;
-    }
-    map_count++;
-   #endif
 
     // Show output
     std::cout << "Number: " << key << "\n";
@@ -482,20 +308,6 @@ int main(int argc, char** argv)
     // std::cout << crnt_transform.matrix() << std::endl;
     std::cout << "---------------------------------------" << std::endl;
 
-    if(false) // to use wavelab mapping here
-    {
-      static int num = 1;
-      char numStrScan[30];
-      char numStrPose[30];
-      sprintf(numStrScan, "test_data/scans/%04d.ply", num);
-      sprintf(numStrPose, "test_data/poses/%04d.csv", num);
-      pcl::io::savePLYFileBinary(std::string(numStrScan), src);
-      std::ofstream out_stream;
-      out_stream.open(std::string(numStrPose));
-      out_stream << crnt_transform.matrix() << std::endl;
-      num++;
-    }
-
     // Update prev values
     prev_transform = crnt_transform;
     prev_time = crnt_time;
@@ -503,10 +315,6 @@ int main(int argc, char** argv)
     rosrate.sleep();
   }
   bag.close();
-  std::cout << "Finished processing bag file. Saving to pcd..." << std::endl;
-
-  std::string out_filename = "merged_map";
-  pcl::io::savePCDFileBinary(out_filename + ".pcd", map);
-  std::cout << "Finished. Saved " << map.size() << " pointcloud to " << out_filename << ".pcd" << std::endl;
+  std::cout << "Finished processing bag file." << std::endl;
   return 0;
 }

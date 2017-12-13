@@ -75,8 +75,8 @@ int main(int argc, char** argv)
 
   // Do process
   std::cout << "Start processing... " << std::endl;
-  std::string output_dir = "/home/zwu/firstrounddata/lidar_scan_offset/";
-  const double lidar_timestamp_offset = -2.1;
+  std::string output_dir = "/home/zwu/firstrounddata/lidar_scan/";
+  const double lidar_timestamp_offset = 0;
   int camIdx = 0, camIdxEnd = camera_times.size();
   BOOST_FOREACH(rosbag::MessageInstance const message, view)
   {

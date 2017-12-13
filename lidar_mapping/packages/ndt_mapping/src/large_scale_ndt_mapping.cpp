@@ -116,7 +116,7 @@ namespace std
 
 // global variables
 static pose previous_pose, guess_pose, current_pose, ndt_pose, added_pose, localizer_pose;
-Eigen::Affine3d current_pose_tf, previous_pose_tf, relative_pose_tf;
+static Eigen::Affine3d current_pose_tf, previous_pose_tf, relative_pose_tf;
 
 static ros::Time current_scan_time;
 static ros::Time previous_scan_time;
@@ -137,12 +137,13 @@ static gpu::GNormalDistributionsTransform gpu_ndt;
 #else
 static pcl::NormalDistributionsTransform<pcl::PointXYZI, pcl::PointXYZI> ndt;
 #endif
-// Default values
+// Default NDT algorithm param values
 static int max_iter = 300;       // Maximum iterations
 static float ndt_res = 2.8;      // Resolution
 static double step_size = 0.05;   // Step size
 static double trans_eps = 0.001;  // Transformation epsilon
 
+// Workspace params
 static float _start_time = 0; // 0 means start playing bag from beginnning
 static float _play_duration = -1; // negative means play everything
 static double min_scan_range = 2.0;
@@ -172,12 +173,12 @@ static int final_num_iteration;
 std::time_t process_begin = std::time(NULL);
 std::tm* pnow = std::localtime(&process_begin);
 
-inline double getYawAngle(double _x, double _y)
+static inline double getYawAngle(double _x, double _y)
 {
   return std::atan2(_y, _x) * 180 / 3.14159265359; // degree value
 }
 
-inline double calculateMinAngleDist(double first, double second) // in degree
+static inline double calculateMinAngleDist(double first, double second) // in degree
 {
   double difference = first - second;
   if(difference >= 180.0)
@@ -187,7 +188,7 @@ inline double calculateMinAngleDist(double first, double second) // in degree
   return difference;
 }
 
-void correctLIDARscan(pcl::PointCloud<pcl::PointXYZI>& scan, Eigen::Affine3d relative_tf, double scan_interval)
+static void correctLIDARscan(pcl::PointCloud<pcl::PointXYZI>& scan, Eigen::Affine3d relative_tf, double scan_interval)
 {
   // Correct scan using vel
   pcl::PointCloud<pcl::PointXYZI> scan_packet;

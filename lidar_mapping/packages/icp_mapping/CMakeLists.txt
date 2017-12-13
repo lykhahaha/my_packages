@@ -31,10 +31,12 @@ SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -fopenmp -Wall ${CMAKE_CXX_FLAGS}")
 
 include_directories(include ${catkin_INCLUDE_DIRS})
 
-add_executable(icp_mapping nodes/icp_mapping.cpp)
-add_executable(queue_counter nodes/queue_counter.cpp)
+add_executable(icp_mapping src/icp_mapping.cpp)
+add_executable(icp_point2plane_mapping src/icp_point2plane_mapping.cpp)
+add_executable(queue_counter src/queue_counter.cpp)
 
 target_link_libraries(icp_mapping ${catkin_LIBRARIES})
+target_link_libraries(icp_point2plane_mapping ${catkin_LIBRARIES})
 target_link_libraries(queue_counter ${catkin_LIBRARIES})
 
 add_dependencies(icp_mapping autoware_msgs_generate_messages_cpp)

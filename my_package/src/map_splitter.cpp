@@ -90,12 +90,19 @@ int main(int argc, char** argv)
 	time_end = std::chrono::system_clock::now();
 	double time_diff = std::chrono::duration_cast<std::chrono::microseconds>(time_end - time_start).count() / 1000.0;
 
-	for (auto& x: worldMap) 
-	{
-    std::cout << "(" << x.first.x << "," << x.first.y << "): " << x.second.size() << std::endl;
-    std::string out_filename = "/home/zwu/map_folder/" + std::to_string(x.first.x) + ";" + std::to_string(x.first.y);
-	  pcl::io::savePCDFileBinary(out_filename + ".pcd", x.second);
-	  std::cout << "Finished. Saved pointcloud to " << out_filename << ".pcd" << std::endl;
-  }
+ #pragma omp parallel 
+ {
+   #pragma omp single
+   {
+	  for(auto x = worldMap.begin(); x != worldMap.end(); x++) 
+     #pragma omp task
+	    {
+        std::cout << "(" << x->first.x << "," << x->first.y << "): " << x->second.size() << std::endl;
+        std::string out_filename = "/home/zwu/map_folder/" + std::to_string(x->first.x) + ";" + std::to_string(x->first.y);
+    	  pcl::io::savePCDFileBinary(out_filename + ".pcd", x->second);
+    	  std::cout << "Finished. Saved pointcloud to " << out_filename << ".pcd" << std::endl;
+      }
+   } 
+ }
 	return 0;
 }

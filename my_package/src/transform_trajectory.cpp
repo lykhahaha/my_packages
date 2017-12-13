@@ -61,7 +61,7 @@ int main(int argc, char** argv)
     std::stringstream line_stream(line);
 
     // Get data value
-    // getline(line_stream, key_str, ',');
+    getline(line_stream, key_str, ',');
     getline(line_stream, seq_str, ',');
     getline(line_stream, sec_str, ',');
     getline(line_stream, nsec_str, ',');
