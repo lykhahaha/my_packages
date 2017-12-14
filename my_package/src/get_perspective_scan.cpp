@@ -23,7 +23,12 @@
 #include <string>
 #include <vector>
 
-#define OUTPUT_INTERPOLATED_POSE // to a csv file
+// #define OUTPUT_INTERPOLATED_POSE // to a csv file
+// #define VOXEL_GRID_OCCLUSION
+
+#ifdef VOXEL_GRID_OCCLUSION
+#include <pcl/filters/voxel_grid_occlusion_estimation.h>
+#endif
 
 struct pose
 {
@@ -100,12 +105,12 @@ int main(int argc, char** argv)
   std::cout << "Collecting localized lidar poses and time stamps." << std::endl;
   const double lidar_time_offset = -2.1;
 
-  #ifdef OUTPUT_INTERPOLATED_POSE
+ #ifdef OUTPUT_INTERPOLATED_POSE
   std::ofstream intrpl_pose_stream;
   std::string intrpl_pose_file = "/home/zwu/1dec-datacollection/second/interpolated_poses.csv";
   intrpl_pose_stream.open(intrpl_pose_file);
   intrpl_pose_stream << "timestamp,x,y,z,roll,pitch,yaw" << std::endl;
-  #endif
+ #endif
 
   while(getline(pose_stream, line))
   {
@@ -123,27 +128,14 @@ int main(int argc, char** argv)
     getline(line_stream, yaw_str);
 
     double current_time = std::stod(sec_str) + std::stod(nsec_str) / 1e9; // in seconds
-    // std::cout << "time: " << current_time << std::endl;
     lidar_times.push_back(current_time + lidar_time_offset);
     Eigen::Affine3d tf_vtow;
     pcl::getTransformation(std::stod(x_str), std::stod(y_str), std::stod(z_str),
                            std::stod(roll_str), std::stod(pitch_str), std::stod(yaw_str),
                            tf_vtow);
 
-    // Eigen::Vector3d lidar_world = tf_vtow * lidar_vehicle;
-    // pose current_pose({lidar_world[0], lidar_world[1], lidar_world[2],
-    //                    std::stod(roll_str), std::stod(pitch_str), std::stod(yaw_str)});
-    // Eigen::Affine3d tf_ltow = tf_vtow * tf_ltov;
-    // pose current_pose;
-    // pcl::getTranslationAndEulerAngles(tf_ltow, current_pose.x, current_pose.y, current_pose.z, current_pose.roll, current_pose.pitch, current_pose.yaw);
     pose current_pose({std::stod(x_str), std::stod(y_str), std::stod(z_str),
                        std::stod(roll_str), std::stod(pitch_str), std::stod(yaw_str)});
-    // std::cout << "pose: " << current_pose.x << ","
-    //                       << current_pose.y << ","
-    //                       << current_pose.z << ","
-    //                       << current_pose.roll << ","
-    //                       << current_pose.pitch << ","
-    //                       << current_pose.yaw << std::endl;
 
     lidar_poses.push_back(current_pose);
   }
@@ -164,6 +156,7 @@ int main(int argc, char** argv)
   }
   std::cout << "INFO: Collected " << camera_times.size() << " data." << std::endl;
 
+  /////////////////////////////////////////////////////////////////////////////////////////////////////////
   // Do interpolation and publish the synthetic perspective pointcloud
   unsigned int lIdx = 0, lIdx_end = lidar_times.size();
   pose pose_diff;
@@ -273,30 +266,60 @@ int main(int argc, char** argv)
                            interpolating_pose.pitch, 
                            interpolating_pose.yaw, transform);
 
-    pcl::PointCloud<pcl::PointXYZI> localCloud;
-    pcl::transformPointCloud(nearestCloud, localCloud, transform.inverse());
+    pcl::PointCloud<pcl::PointXYZI>::Ptr localCloud(new pcl::PointCloud<pcl::PointXYZI>());
+    pcl::transformPointCloud(nearestCloud, *localCloud, transform.inverse());
+
+   #ifdef VOXEL_GRID_OCCLUSION
+    // Set up voxel_grid_occlusion_estimation
+    pcl::PointCloud<pcl::PointXYZI>::Ptr localVisibleCloud(new pcl::PointCloud<pcl::PointXYZI>());
+    pcl::VoxelGridOcclusionEstimation<pcl::PointXYZI> vgoe;
+    vgoe.setInputCloud(localCloud);
+    vgoe.setLeafSize(0.8, 0.8, 0.8);
+    vgoe.initializeVoxelGrid();
+
+    // Estimate the occluded space
+    std::vector< Eigen::Vector3i, Eigen::aligned_allocator<Eigen::Vector3i> > occluded_voxels;
+    // if(vgoe.occlusionEstimationAll(occluded_voxels) == -1)
+    if(0)
+    {
+      std::cout << "ERROR: Failed to apply voxel grid occlusion estimation!" << std::endl;
+      *localVisibleCloud = *localCloud;
+    }
+    else
+    {
+      // Collect all visible points to a new cloud
+      for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = localCloud->begin(); item != localCloud->end(); item++)
+      {
+        Eigen::Vector3i current_grid_cordinates = vgoe.getGridCoordinates(item->x, item->y, item->z);
+        int current_grid_state;
+        if(vgoe.occlusionEstimation(current_grid_state, current_grid_cordinates) == -1)
+          continue;
+        else
+        {
+          if(current_grid_state == 0)
+          {
+            localVisibleCloud->push_back(*item);
+          }
+        }
+      }
+    }
+   #endif
 
     // Publish
     sensor_msgs::PointCloud2::Ptr scan_msg_ptr(new sensor_msgs::PointCloud2);
-    localCloud.header.frame_id = "map";
-    pcl::toROSMsg(localCloud, *scan_msg_ptr);
+   #ifndef VOXEL_GRID_OCCLUSION
+    localCloud->header.frame_id = "map";
+    pcl::toROSMsg(*localCloud, *scan_msg_ptr);
+   #else
+    localVisibleCloud->header.frame_id = "map";
+    pcl::toROSMsg(*localVisibleCloud, *scan_msg_ptr);
+   #endif
     scan_pub.publish(*scan_msg_ptr);
 
     // Convert pointcloud to txt file and save
-    std::ofstream pointcloud_stream;
-    // std::string pointcloud_txt_file = "/home/zwu/reprojectiondata/lidar/" + std::to_string(file_count) + ".txt";
-    pointcloud_stream.open(file_location + std::to_string(file_count) + ".txt");
-    // for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = localCloud.begin(); item != localCloud.end(); item++)
-    // {
-    //   char output_buffer[1000];
-    //   double x = item->x;
-    //   double y = item->y;
-    //   double z = item->z;
-    //   int intensity = item->intensity;
-    //   sprintf(output_buffer, "%.10lf %.10lf %.10lf %d", x, y, z, intensity);
-    //   pointcloud_stream << output_buffer << std::endl;
-    // }
-    std::cout << "Saved " << localCloud.size() << " points to " + file_location + std::to_string(file_count) + ".txt" << std::endl;
+    // std::ofstream pointcloud_stream;
+    // pointcloud_stream.open(file_location + std::to_string(file_count) + ".txt");
+    // std::cout << "Saved " << localCloud.size() << " points to " + file_location + std::to_string(file_count) + ".txt" << std::endl;
     std::cout << "---------------------------------------------------------" << std::endl;
     file_count++;
   }

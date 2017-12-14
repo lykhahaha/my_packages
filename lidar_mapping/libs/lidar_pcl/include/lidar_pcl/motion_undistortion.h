@@ -29,15 +29,17 @@ namespace lidar_pcl
   }
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-  void motionUndistort(pcl::PointCloud<pcl::PointXYZI>& scan, Eigen::Affine3d relative_tf)
+  template <typename PointT>
+  void motionUndistort(pcl::PointCloud<PointT>& scan, Eigen::Affine3d relative_tf)
   /* Note: This function is tested with Velodyne LiDAR scanners (VLP16, HDL32, and HDL64E)
            where the points in PointCloud are in order of firing sequence
     */
   {
-    pcl::PointCloud<pcl::PointXYZI> scan_packet;
-    std::vector<pcl::PointCloud<pcl::PointXYZI>> scan_packet_vector;
+    pcl::PointCloud<PointT> scan_packet;
+    std::vector< pcl::PointCloud<PointT> > scan_packet_vector;
     double base_azimuth = getYawAngle((scan.begin())->x, (scan.begin())->y);
-    for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = scan.begin(); item != scan.end(); item++)
+
+    for(auto item = scan.begin(); item != scan.end(); item++)
     {
       double crnt_azimuth = getYawAngle(item->x, item->y);
       if(std::fabs(calculateMinAngleDist(crnt_azimuth, base_azimuth)) < 0.01) // 0.17 degree is the typical change for 10Hz rotation
@@ -74,7 +76,7 @@ namespace lidar_pcl
                              current_packet_pose.roll, 
                              current_packet_pose.pitch, 
                              current_packet_pose.yaw, transform);
-      pcl::PointCloud<pcl::PointXYZI> corrected_packet;
+      pcl::PointCloud<PointT> corrected_packet;
       pcl::transformPointCloud(scan_packet_vector[npackets-1-i], corrected_packet, transform);
       scan += corrected_packet;
     }

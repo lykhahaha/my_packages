@@ -82,6 +82,7 @@ namespace lidar_pcl
     bool is_map_updated_;
 
     Eigen::Matrix4f tf_btol_, tf_ltob_;
+    Eigen::Affine3d relative_pose_tf_;
     Pose ndt_pose_, current_pose_, previous_pose_, added_pose_;
     Pose pose_diff_;
     Pose lidar_previous_pose_;
@@ -98,6 +99,7 @@ namespace lidar_pcl
     Pose estimateCurrentPose(Pose pose, Vel velocity, double interval);
     Eigen::Matrix4f getInitNDTPose(Pose pose);
     void correctLidarScan(pcl::PointCloud<PointT>& scan, Vel velocity, double interval);
+    void motionUndistort(pcl::PointCloud<PointT>& scan, Eigen::Affine3d relative_tf);
 
   public:
     NDTCorrectedLidarMapping();

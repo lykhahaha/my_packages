@@ -9,6 +9,7 @@ find_package(catkin REQUIRED COMPONENTS
   cv_bridge
   dynamic_reconfigure
   image_transport
+  lidar_pcl
   message_generation
   pcl_ros
   # pcl_conversion
@@ -142,7 +143,7 @@ include_directories(include ${catkin_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${CERE
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
 
-SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -Wall -fopenmp -DUSE_FAST_PCL ${CMAKE_CXX_FLAGS}")
+SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -Wall -fopenmp ${CMAKE_CXX_FLAGS}")
 
 macro(add_new_node name)
   add_executable(${name} src/${name}.cpp)

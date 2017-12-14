@@ -34,12 +34,15 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/registration/icp.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/features/normal_3d.h>
+#include <pcl/features/normal_3d_omp.h>
 
 // Custom libs
 #include <lidar_pcl/data_types.h>
 #include <lidar_pcl/motion_undistortion.h>
 
 #define OUTPUT_POSE
+#define ICP_POINT2PLANE
 
 // global variables
 static Pose previous_pose, guess_pose, current_pose, icp_pose, added_pose, localizer_pose;
@@ -61,7 +64,11 @@ static pcl::PointCloud<pcl::PointXYZI> local_map;
 static Key local_key, previous_key;
 static const double TILE_WIDTH = 35;
 
+#ifdef ICP_POINT2PLANE
+static pcl::IterativeClosestPointWithNormals<pcl::PointXYZINormal, pcl::PointXYZINormal> icp;
+#else
 static pcl::IterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI> icp;
+#endif
 static pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_filter;
 
 // Default values for ICP
@@ -85,7 +92,7 @@ static std::string _namespace;
 static double _tf_x, _tf_y, _tf_z, _tf_roll, _tf_pitch, _tf_yaw;
 static Eigen::Matrix4f tf_btol, tf_ltob;
 
-static int add_scan_number = 1; // added frame count
+static int add_scan_number = 0; // added frame count
 static int initial_scan_loaded = 0;
 static bool isMapUpdate = true;
 static double fitness_score;
@@ -117,6 +124,27 @@ static void addNewScan(const pcl::PointCloud<pcl::PointXYZI> new_scan)
   local_map += new_scan;
 }
 
+static void addNormalComponent(const pcl::PointCloud<pcl::PointXYZI>::Ptr pcloud,
+                               pcl::PointCloud<pcl::PointXYZINormal>::Ptr pcloud_with_normal)
+{
+  std::cout << "ADADSA:" << pcloud->size() << std::endl;
+  pcl::NormalEstimationOMP<pcl::PointXYZI, pcl::Normal> normal_estimator;
+  pcl::PointCloud<pcl::Normal>::Ptr pcloud_normals(new pcl::PointCloud<pcl::Normal>());
+  normal_estimator.setInputCloud(pcloud);
+
+  pcl::search::KdTree<pcl::PointXYZI>::Ptr search_tree_ptr(new pcl::search::KdTree<pcl::PointXYZI>());
+  search_tree_ptr->setInputCloud(pcloud);
+  normal_estimator.setSearchMethod(search_tree_ptr);
+  // normal_estimator.setRadiusSearch(0.1);
+  normal_estimator.setKSearch(10);
+  std::cout << "HERE" << std::endl;
+  normal_estimator.compute(*pcloud_normals);
+  std::cout << "HERE2" << std::endl;
+  // Output
+  pcl::concatenateFields(*pcloud, *pcloud_normals, *pcloud_with_normal);
+  std::cout << "FINIS" << std::endl;
+}
+
 static void mapMaintenanceCallback(Pose local_pose)
 {
   // Get local_key
@@ -139,7 +167,7 @@ static void mapMaintenanceCallback(Pose local_pose)
         tmp_key.y = y;
         local_map += world_map[tmp_key];
       }
-
+    // std::cout << "LOCAL MAP SIZE -------- " << local_map.size() << std::endl;
     // Update key
     previous_key = local_key;
   }
@@ -162,8 +190,11 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
   current_scan_time = input->header.stamp;
 
   pcl::fromROSMsg(*input, tmp);
+  // pcl::PointCloud<pcl::PointXYZI> valid_tmp; //(new pcl::PointCloud<pcl::PointXYZI>());
+  // std::vector<int> valid_index;
+  // pcl::removeNaNFromPointCloud(tmp, valid_tmp, valid_index);
 
-  for (pcl::PointCloud<pcl::PointXYZI>::const_iterator item = tmp.begin(); item != tmp.end(); item++)
+  for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = tmp.begin(); item != tmp.end(); item++)
   {
     p.x = (double)item->x;
     p.y = (double)item->y;
@@ -181,16 +212,18 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
   // Add initial point cloud to velodyne_map
   if(initial_scan_loaded == 0)
   {
+    add_scan_number++;
     pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, tf_btol);
     addNewScan(*transformed_scan_ptr);
     initial_scan_loaded = 1;
+    isMapUpdate = true;
    #ifdef OUTPUT_POSE
     csv_stream << add_scan_number << "," << input->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
                << _tf_x << "," << _tf_y << "," << _tf_z << "," 
                << _tf_roll << "," << _tf_pitch << "," << _tf_yaw
                << std::endl;
    #endif // OUTPUT_POSE
-    add_scan_number++;
+    std::cout << "Added initial scan to map" << std::endl;
     return;
   }
 
@@ -203,7 +236,12 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
     voxel_grid_filter.filter(*filtered_scan_ptr);
   }
   
+ #ifdef ICP_POINT2PLANE
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr local_map_ptr(new pcl::PointCloud<pcl::PointXYZINormal>());
+  addNormalComponent(pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>(local_map)), local_map_ptr);
+ #else
   pcl::PointCloud<pcl::PointXYZI>::Ptr local_map_ptr(new pcl::PointCloud<pcl::PointXYZI>(local_map));
+ #endif
   if(isMapUpdate == true)
   {
     icp.setInputTarget(local_map_ptr);
@@ -211,7 +249,13 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
   }
 
   // Setting point cloud to be aligned
+ #ifdef ICP_POINT2PLANE
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr filtered_scan_ptr_2(new pcl::PointCloud<pcl::PointXYZINormal>());
+  addNormalComponent(filtered_scan_ptr, filtered_scan_ptr_2);
+  icp.setInputSource(filtered_scan_ptr_2);
+ #else
   icp.setInputSource(filtered_scan_ptr);
+ #endif
 
   // Calculate guessed pose for matching scan to map    
   guess_pose.x = previous_pose.x + diff_x;
@@ -220,19 +264,23 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
   guess_pose.roll = previous_pose.roll;
   guess_pose.pitch = previous_pose.pitch;
   guess_pose.yaw = previous_pose.yaw + diff_yaw;
-      
+  
   // Guess the initial gross estimation of the transformation
   Eigen::AngleAxisf init_rotation_x(guess_pose.roll, Eigen::Vector3f::UnitX());
   Eigen::AngleAxisf init_rotation_y(guess_pose.pitch, Eigen::Vector3f::UnitY());
   Eigen::AngleAxisf init_rotation_z(guess_pose.yaw, Eigen::Vector3f::UnitZ());
   Eigen::Translation3f init_translation(guess_pose.x, guess_pose.y, guess_pose.z);
   Eigen::Matrix4f init_guess = (init_translation * init_rotation_z * init_rotation_y * init_rotation_x) * tf_btol;
-      
+  // std::cout << init_guess << std::endl;
+
+ #ifdef ICP_POINT2PLANE
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr output_cloud(new pcl::PointCloud<pcl::PointXYZINormal>);
+ #else 
   pcl::PointCloud<pcl::PointXYZI>::Ptr output_cloud(new pcl::PointCloud<pcl::PointXYZI>);
+ #endif
   icp.align(*output_cloud, init_guess);
-  has_converged = icp.hasConverged();
-  // final_num_iteration = icp.getFinalNumIteration();
-  fitness_score = icp.getFitnessScore();
+  // has_converged = icp.hasConverged();
+  // fitness_score = icp.getFitnessScore();
   t_localizer = icp.getFinalTransformation();  // localizer
 
   t_base_link = t_localizer * tf_ltob;         // base_link
@@ -290,12 +338,6 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
   pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, t_localizer);
   if(t_shift >= min_add_scan_shift || R_shift >= min_add_scan_yaw_diff)
   {
-   #ifdef OUTPUT_POSE
-    csv_stream << add_scan_number << "," << input->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
-               << localizer_pose.x << "," << localizer_pose.y << "," << localizer_pose.z << ","
-               << localizer_pose.roll << "," << localizer_pose.pitch << "," << localizer_pose.yaw
-               << std::endl;
-   #endif // OUTPUT_POSE
     addNewScan(*transformed_scan_ptr);
     add_scan_number++;
     added_pose.x = current_pose.x;
@@ -305,6 +347,12 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
     added_pose.pitch = current_pose.pitch;
     added_pose.yaw = current_pose.yaw;
     isMapUpdate = true;
+   #ifdef OUTPUT_POSE
+    csv_stream << add_scan_number << "," << input->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
+               << localizer_pose.x << "," << localizer_pose.y << "," << localizer_pose.z << ","
+               << localizer_pose.roll << "," << localizer_pose.pitch << "," << localizer_pose.yaw
+               << std::endl;
+   #endif // OUTPUT_POSE
   }
  #ifdef OUTPUT_POSE
   else
@@ -349,8 +397,8 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
   std::cout << "Number of filtered scan points: " << filtered_scan_ptr->size() << " points." << std::endl;
   std::cout << "Local map: " << local_map.points.size() << " points.\n";
   
-  std::cout << "ICP has converged: " << has_converged << std::endl;
-  std::cout << "Fitness score: " << fitness_score << std::endl;
+  // std::cout << "ICP has converged: " << has_converged << std::endl;
+  // std::cout << "Fitness score: " << fitness_score << std::endl;
   // std::cout << "Number of iteration: " << final_num_iteration << std::endl;
   std::cout << "(x,y,z,roll,pitch,yaw):" << std::endl;
   std::cout << "(" << current_pose.x << ", " << current_pose.y << ", " << current_pose.z << ", " << current_pose.roll
@@ -359,7 +407,7 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
   // std::cout << t_localizer << std::endl;
   std::cout << "Translation shift: " << t_shift << std::endl;
   std::cout << "Rotation (yaw) shift: " << R_shift << "\n";
-  std::cout << "-----------------------------------------------------------------" << std::endl;
+  std::cout << "-----------------------------------------------------------------\n" << std::endl;
 }
 
 void mySigintHandler(int sig) // Publish the map/final_submap if node is terminated
@@ -584,7 +632,8 @@ int main(int argc, char** argv)
     std::cout << "---Number of key scans: " << add_scan_number << "\n";
     std::cout << "---Processed: " << msg_pos << "/" << msg_size << "\n";
     std::cout << "---Getting local map took: " << std::chrono::duration_cast<std::chrono::nanoseconds>(t2 - t1).count() / 1.0 << "ns.\n";
-    std::cout << "---ICP Mapping took: " << std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count() / 1000.0 << "ms."<< std::endl;
+    std::cout << "---ICP Mapping took: " << std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count() / 1000.0 << "ms.\n";
+    std::cout << "###############################################" << std::endl;
   }
   bag.close();
   std::cout << "Finished processing bag file." << std::endl;

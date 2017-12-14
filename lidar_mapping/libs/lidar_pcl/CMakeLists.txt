@@ -19,7 +19,7 @@ catkin_package(
 set(srcs
   src/data_types.cpp
   src/lidar_pcl.cpp
-  # src/motion_undistortion.cpp
+  src/motion_undistortion.cpp
   src/ndt_lidar_mapping.cpp
 )
 

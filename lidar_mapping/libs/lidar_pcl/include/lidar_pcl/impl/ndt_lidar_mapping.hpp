@@ -201,8 +201,9 @@ template <typename PointT> void
 lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<PointT> new_scan,
                                                           const ros::Time current_scan_time)
 {
-  // lidar_pcl::motionUndistort()
   PointCloudPtr new_scan_ptr(new pcl::PointCloud<PointT>(new_scan));
+  lidar_pcl::motionUndistort(*new_scan_ptr, relative_pose_tf_);
+
   transformed_scan_ptr_->clear();
 
   // If this is the first scan, just push it into map then exit
@@ -371,6 +372,15 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
   pose_diff_.roll = current_pose_.roll - previous_pose_.roll;
   pose_diff_.pitch = current_pose_.pitch - previous_pose_.pitch;
   pose_diff_.yaw = current_pose_.yaw - previous_pose_.yaw;
+
+  Eigen::Affine3d current_pose_tf, previous_pose_tf;
+  pcl::getTransformation(current_pose_.x, current_pose_.y, current_pose_.z,
+                         current_pose_.roll, current_pose_.pitch, current_pose_.yaw,
+                         current_pose_tf);
+  pcl::getTransformation(previous_pose_.x, previous_pose_.y, previous_pose_.z,
+                         previous_pose_.roll, previous_pose_.pitch, previous_pose_.yaw,
+                         previous_pose_tf);
+  relative_pose_tf_ = previous_pose_tf.inverse() * current_pose_tf;
 
   // Update <previous> values
   previous_pose_.x = current_pose_.x;
