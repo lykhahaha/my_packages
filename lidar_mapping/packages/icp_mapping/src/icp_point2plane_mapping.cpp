@@ -124,25 +124,27 @@ static void addNewScan(const pcl::PointCloud<pcl::PointXYZI> new_scan)
   local_map += new_scan;
 }
 
-static void addNormalComponent(const pcl::PointCloud<pcl::PointXYZI>::Ptr pcloud,
-                               pcl::PointCloud<pcl::PointXYZINormal>::Ptr pcloud_with_normal)
+static void addNormalComponent(const pcl::PointCloud<pcl::PointXYZI>& pcloud,
+                               pcl::PointCloud<pcl::PointXYZINormal>& pcloud_with_normal)
 {
-  std::cout << "ADADSA:" << pcloud->size() << std::endl;
+  std::cout << "START" << std::endl;
   pcl::NormalEstimationOMP<pcl::PointXYZI, pcl::Normal> normal_estimator;
-  pcl::PointCloud<pcl::Normal>::Ptr pcloud_normals(new pcl::PointCloud<pcl::Normal>());
-  normal_estimator.setInputCloud(pcloud);
+
+  pcl::PointCloud<pcl::PointXYZI>::Ptr pcloud_ptr(new pcl::PointCloud<pcl::PointXYZI>(pcloud));
+  pcl::PointCloud<pcl::Normal>::Ptr pcloud_normals_ptr(new pcl::PointCloud<pcl::Normal>());
+  normal_estimator.setInputCloud(pcloud_ptr);
 
   pcl::search::KdTree<pcl::PointXYZI>::Ptr search_tree_ptr(new pcl::search::KdTree<pcl::PointXYZI>());
-  search_tree_ptr->setInputCloud(pcloud);
+  // search_tree_ptr->setInputCloud(pcloud);
   normal_estimator.setSearchMethod(search_tree_ptr);
   // normal_estimator.setRadiusSearch(0.1);
-  normal_estimator.setKSearch(10);
-  std::cout << "HERE" << std::endl;
-  normal_estimator.compute(*pcloud_normals);
-  std::cout << "HERE2" << std::endl;
+  normal_estimator.setKSearch(20);
+  
+  normal_estimator.compute(*pcloud_normals_ptr);
+  
   // Output
-  pcl::concatenateFields(*pcloud, *pcloud_normals, *pcloud_with_normal);
-  std::cout << "FINIS" << std::endl;
+  pcloud_with_normal.clear();  
+  pcl::concatenateFields(pcloud, *pcloud_normals_ptr, pcloud_with_normal);
 }
 
 static void mapMaintenanceCallback(Pose local_pose)
@@ -190,9 +192,6 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
   current_scan_time = input->header.stamp;
 
   pcl::fromROSMsg(*input, tmp);
-  // pcl::PointCloud<pcl::PointXYZI> valid_tmp; //(new pcl::PointCloud<pcl::PointXYZI>());
-  // std::vector<int> valid_index;
-  // pcl::removeNaNFromPointCloud(tmp, valid_tmp, valid_index);
 
   for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = tmp.begin(); item != tmp.end(); item++)
   {
@@ -238,7 +237,7 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
   
  #ifdef ICP_POINT2PLANE
   pcl::PointCloud<pcl::PointXYZINormal>::Ptr local_map_ptr(new pcl::PointCloud<pcl::PointXYZINormal>());
-  addNormalComponent(pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>(local_map)), local_map_ptr);
+  addNormalComponent(local_map, *local_map_ptr);
  #else
   pcl::PointCloud<pcl::PointXYZI>::Ptr local_map_ptr(new pcl::PointCloud<pcl::PointXYZI>(local_map));
  #endif
@@ -251,7 +250,7 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
   // Setting point cloud to be aligned
  #ifdef ICP_POINT2PLANE
   pcl::PointCloud<pcl::PointXYZINormal>::Ptr filtered_scan_ptr_2(new pcl::PointCloud<pcl::PointXYZINormal>());
-  addNormalComponent(filtered_scan_ptr, filtered_scan_ptr_2);
+  addNormalComponent(*filtered_scan_ptr, *filtered_scan_ptr_2);
   icp.setInputSource(filtered_scan_ptr_2);
  #else
   icp.setInputSource(filtered_scan_ptr);

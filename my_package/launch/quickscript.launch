@@ -29,7 +29,7 @@
   <arg name="tf_yaw" default="0.0"/>
 
   <!-- rosrun icp_mapping icp_mapping  -->
-  <node pkg="icp_mapping" type="icp_point2plane_mapping" name="icp_point2plane_mapping" output="screen" >
+  <node pkg="my_package" type="quickscript" name="quickscript" output="screen" >
     <param name="bag_file" value="$(arg bag)" />
     <param name="start_time" value="$(arg start_time)" />
     <param name="play_duration" value="$(arg play_duration)" />

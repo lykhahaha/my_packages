@@ -34,8 +34,8 @@
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/registration/icp.h>
 #include <pcl/filters/voxel_grid.h>
-#include <pcl/features/normal_3d.h>
-// #include <pcl/features/normal_3d_omp.h>
+// #include <pcl/features/normal_3d.h>
+#include <pcl/features/normal_3d_omp.h>
 
 // Custom libs
 #include <lidar_pcl/data_types.h>
@@ -124,38 +124,26 @@ static void addNewScan(const pcl::PointCloud<pcl::PointXYZI> new_scan)
   local_map += new_scan;
 }
 
-static void addNormalComponent(pcl::PointCloud<pcl::PointXYZI>& pcloud,
+static void addNormalComponent(const pcl::PointCloud<pcl::PointXYZI>& pcloud,
                                pcl::PointCloud<pcl::PointXYZINormal>& pcloud_with_normal)
 {
-  pcl::PointCloud<pcl::PointXYZ> pcloud_xyz;
-  std::cout << "ADADSA:" << pcloud.size() << std::endl;
-  pcl::PointXYZ p;
-  for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = pcloud.begin(); item != pcloud.end(); item++)
-  {
-    p.x = (double)item->x;
-    p.y = (double)item->y;
-    p.z = (double)item->z;
-    pcloud_xyz.push_back(p);
-  }
+  pcl::NormalEstimation<pcl::PointXYZI, pcl::Normal> normal_estimator;
 
-  pcl::NormalEstimation<pcl::PointXYZ, pcl::Normal> normal_estimator;
-
-  pcl::PointCloud<pcl::PointXYZ>::Ptr pcloud_xyz_ptr(new pcl::PointCloud<pcl::PointXYZ>(pcloud_xyz));
+  pcl::PointCloud<pcl::PointXYZI>::Ptr pcloud_ptr(new pcl::PointCloud<pcl::PointXYZI>(pcloud));
   pcl::PointCloud<pcl::Normal>::Ptr pcloud_normals(new pcl::PointCloud<pcl::Normal>());
-  normal_estimator.setInputCloud(pcloud_xyz_ptr);
+  normal_estimator.setInputCloud(pcloud_ptr);
 
-  pcl::search::KdTree<pcl::PointXYZ>::Ptr search_tree_ptr(new pcl::search::KdTree<pcl::PointXYZ>());
-  search_tree_ptr->setInputCloud(pcloud_xyz_ptr);
-  // search_tree_ptr->setInputCloud(pcloud);
+  pcl::search::KdTree<pcl::PointXYZI>::Ptr search_tree_ptr(new pcl::search::KdTree<pcl::PointXYZI>());
+  // search_tree_ptr->setInputCloud(pcloud_ptr);
   normal_estimator.setSearchMethod(search_tree_ptr);
-  normal_estimator.setRadiusSearch(10);
-  // normal_estimator.setKSearch(1000);
-  std::cout << "HERE" << std::endl;
+  // normal_estimator.setRadiusSearch(10);
+  normal_estimator.setKSearch(20);
+
   normal_estimator.compute(*pcloud_normals);
-  std::cout << "HERE2" << std::endl;
+
   // Output
+  pcloud_with_normal.clear();
   pcl::concatenateFields(pcloud, *pcloud_normals, pcloud_with_normal);
-  std::cout << "FINIS" << std::endl;
 }
 
 static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
@@ -165,6 +153,10 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
 
   pcl::PointCloud<pcl::PointXYZINormal> tmp2;
   addNormalComponent(tmp, tmp2);
+  addNormalComponent(tmp, tmp2);
+  addNormalComponent(tmp, tmp2);
+  addNormalComponent(tmp, tmp2);
+
 
 }
 
