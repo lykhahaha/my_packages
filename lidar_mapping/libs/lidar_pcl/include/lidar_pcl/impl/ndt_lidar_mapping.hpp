@@ -230,11 +230,6 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
     is_map_updated_ = false;
   }
 
-  // std::cout << "-----------------------------------------------------------------\n";
-  // std::cout << "Prev pose: " << previous_pose_ << std::endl;
-  // std::cout << "Prev vel: " << lidar_previous_velocity_ << std::endl;
-  // std::cout << "Prev accel: " << lidar_previous_accel_ << std::endl;
-  // Guess initial pose for NDT iterative calc, assuming <acceleration = const> throughout
   double scan_interval = getScanInterval(current_scan_time, previous_scan_time_);
   Vel lidar_estimated_velocity = lidar_previous_velocity_; // estimateCurrentVelocity(lidar_previous_velocity_, lidar_previous_accel_, scan_interval);
   Pose vehicle_estimated_pose(previous_pose_.x + pose_diff_.x,
@@ -244,21 +239,12 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
                               previous_pose_.pitch, // + pose_diff_.pitch,
                               previous_pose_.yaw + pose_diff_.yaw);
 
-  // std::cout << "Velocity: " << lidar_estimated_velocity << std::endl;
-  // std::cout << "Pose: " << lidar_estimated_pose << std::endl;
-
   Eigen::Matrix4f t_localizer(Eigen::Matrix4f::Identity());
   Vel ndt_velocity;
-  // Accel ndt_acceleration;
   unsigned int iter_num = 0;
   while(iter_num < CORRECTED_NDT_ITERATION_THRESHOLD_)
   {
-    std::cout << "-----------------------------------------------------------------\n";
     iter_num++;
-    // std::cout << "Matching: " << iter_num << std::endl;
-    // std::cout << "Initial guess: " << lidar_estimated_pose << std::endl;
-    // std::cout << "Initial Vel: " << lidar_estimated_velocity << std::endl;
-    // correctLidarScan(*filtered_scan_ptr, lidar_estimated_velocity, scan_interval);
     ndt_.setInputSource(filtered_scan_ptr);
     Eigen::Matrix4f init_guess = getInitNDTPose(vehicle_estimated_pose);
     PointCloudPtr output_cloud(new pcl::PointCloud<PointT>);
@@ -283,7 +269,6 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
     ndt_pose_.y = t_localizer(1, 3);
     ndt_pose_.z = t_localizer(2, 3);
     mat_l.getRPY(ndt_pose_.roll, ndt_pose_.pitch, ndt_pose_.yaw, 1);
-    // std::cout << "Result: " << ndt_pose_ << std::endl;
 
     // Re-update current ndt vel/accel with the newly achieved pose
     // ndt_acceleration.x     = 0; //2.0 * (ndt_pose_.x - lidar_previous_pose_.x - lidar_previous_velocity_.x * scan_interval) / (scan_interval * scan_interval);
@@ -299,8 +284,6 @@ lidar_pcl::NDTCorrectedLidarMapping<PointT>::doNDTMapping(const pcl::PointCloud<
     ndt_velocity.roll  = (ndt_pose_.roll - lidar_previous_pose_.roll) / scan_interval; //2.0 * (ndt_pose_.roll - lidar_previous_pose_.roll) / scan_interval - lidar_previous_velocity_.roll;
     ndt_velocity.pitch = (ndt_pose_.pitch - lidar_previous_pose_.pitch) / scan_interval; //2.0 * (ndt_pose_.pitch - lidar_previous_pose_.pitch) / scan_interval - lidar_previous_velocity_.pitch;
     ndt_velocity.yaw   = (ndt_pose_.yaw - lidar_previous_pose_.yaw) / scan_interval; //2.0 * (ndt_pose_.yaw - lidar_previous_pose_.yaw) / scan_interval - lidar_previous_velocity_.yaw;
-    // std::cout << "Updated vel: " << ndt_velocity << std::endl;
-    // std::cout << "Updated accel: " << ndt_acceleration << std::endl;
 
     if(  std::fabs(ndt_velocity.x - lidar_estimated_velocity.x) * scan_interval < CORRECTED_NDT_DISTANCE_THRESHOLD_
       && std::fabs(ndt_velocity.y - lidar_estimated_velocity.y) * scan_interval < CORRECTED_NDT_DISTANCE_THRESHOLD_
