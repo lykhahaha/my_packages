@@ -42,7 +42,7 @@
 #include <lidar_pcl/motion_undistortion.h>
 
 // #define OUTPUT_POSE
-#define ICP_POINT2PLANE
+// #define ICP_POINT2PLANE
 
 // global variables
 static Pose previous_pose, guess_pose, current_pose, icp_pose, added_pose, localizer_pose;
