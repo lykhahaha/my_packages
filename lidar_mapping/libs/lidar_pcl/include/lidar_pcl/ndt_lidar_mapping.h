@@ -86,7 +86,7 @@ namespace lidar_pcl
     Pose ndt_pose_, current_pose_, previous_pose_, added_pose_;
     Pose pose_diff_;
     Pose lidar_previous_pose_;
-    // Vel lidar_previous_velocity_;
+    Vel lidar_previous_velocity_;
     // Accel lidar_previous_accel_;
     ros::Time previous_scan_time_;
     const double CORRECTED_NDT_DISTANCE_THRESHOLD_ = 0.3; // 0.3m
