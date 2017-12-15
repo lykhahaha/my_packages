@@ -50,7 +50,7 @@
 int main(int argc, char** argv)
 {  
   // Load bag
-  std::string bagfile = "/home/zwu/1dec-datacollection/first/bags/1dec-carpark.bag";
+  std::string bagfile = "/home/zwu/14dec-datacollection/bags/14dec-carpark.bag";
   std::string bagtopic = "/points_raw";
   std::cout << "Reading bag: " << bagfile << " [topic: " << bagtopic << "]... " << std::flush;
   rosbag::Bag bag(bagfile, rosbag::bagmode::Read);
@@ -60,7 +60,7 @@ int main(int argc, char** argv)
   std::cout << "Done." << std::endl;
 
   // Load camera timestamps
-  std::string camerafile = "/home/zwu/1dec-datacollection/first/1dec-6cams-1st/timestamp.txt";
+  std::string camerafile = "/home/zwu/14dec-datacollection/Cam1-6-14Dec/timestamp.txt";
   std::ifstream cam_stream;
   std::cout << "Loading camera timestamp: " << camerafile << std::endl;
   cam_stream.open(camerafile);
@@ -75,8 +75,8 @@ int main(int argc, char** argv)
 
   // Do process
   std::cout << "Start processing... " << std::endl;
-  std::string output_dir = "/home/zwu/firstrounddata/lidar_scan/";
-  const double lidar_timestamp_offset = 0;
+  std::string output_dir = "/home/zwu/14dec-datacollection/lidarscaninput_offset/";
+  const double lidar_timestamp_offset = -2.1;
   int camIdx = 0, camIdxEnd = camera_times.size();
   BOOST_FOREACH(rosbag::MessageInstance const message, view)
   {

@@ -46,6 +46,8 @@
 #include <fast_pcl/ndt_gpu/NormalDistributionsTransform.h>
 #endif
 
+#include <lidar_pcl/motion_undistortion.h>
+
 // Here are the functions I wrote. De-comment to use
 #define TILE_WIDTH 35 // Maximum range of LIDAR 32E is 70m
 #define MY_EXTRACT_SCANPOSE // do not use this, this is to extract scans and poses to close loop
@@ -77,33 +79,33 @@ struct velocity
   double yaw;
 };
 
-struct Key
-{
-  int x;
-  int y;
-};
+// struct Key
+// {
+//   int x;
+//   int y;
+// };
 
-bool operator==(const Key& lhs, const Key& rhs)
-{
-  return lhs.x == rhs.x && lhs.y == rhs.y;
-}
+// bool operator==(const Key& lhs, const Key& rhs)
+// {
+//   return lhs.x == rhs.x && lhs.y == rhs.y;
+// }
 
-bool operator!=(const Key& lhs, const Key& rhs)
-{
-  return lhs.x != rhs.x || lhs.y != rhs.y;
-}
+// bool operator!=(const Key& lhs, const Key& rhs)
+// {
+//   return lhs.x != rhs.x || lhs.y != rhs.y;
+// }
 
-namespace std
-{
-  template <>
-  struct hash<Key> // custom hashing function for Key<(x,y)>
-  {
-    std::size_t operator()(const Key& k) const
-    {
-      return hash<int>()(k.x) ^ (hash<int>()(k.y) << 1);
-    }
-  };
-}
+// namespace std
+// {
+//   template <>
+//   struct hash<Key> // custom hashing function for Key<(x,y)>
+//   {
+//     std::size_t operator()(const Key& k) const
+//     {
+//       return hash<int>()(k.x) ^ (hash<int>()(k.y) << 1);
+//     }
+//   };
+// }
 
 // global variables
 static pose previous_pose, guess_pose, current_pose, ndt_pose, added_pose, localizer_pose;
@@ -279,7 +281,8 @@ static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input
     }
   }
 
-  correctLIDARscan(scan, relative_pose_tf, secs);
+  // correctLIDARscan(scan, relative_pose_tf, secs);
+  lidar_pcl::motionUndistort(scan, relative_pose_tf);
   pcl::PointCloud<pcl::PointXYZI>::Ptr scan_ptr(new pcl::PointCloud<pcl::PointXYZI>(scan));
 
   #ifdef LIMIT_HEIGHT

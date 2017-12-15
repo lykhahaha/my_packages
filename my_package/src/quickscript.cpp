@@ -42,7 +42,7 @@
 #include <lidar_pcl/motion_undistortion.h>
 
 // #define OUTPUT_POSE
-// #define ICP_POINT2PLANE
+#define ICP_POINT2PLANE
 
 // global variables
 static Pose previous_pose, guess_pose, current_pose, icp_pose, added_pose, localizer_pose;
@@ -124,40 +124,114 @@ static void addNewScan(const pcl::PointCloud<pcl::PointXYZI> new_scan)
   local_map += new_scan;
 }
 
-static void addNormalComponent(const pcl::PointCloud<pcl::PointXYZI>& pcloud,
+static void addNormalComponent(pcl::PointCloud<pcl::PointXYZI>& pcloud,
                                pcl::PointCloud<pcl::PointXYZINormal>& pcloud_with_normal)
 {
-  pcl::NormalEstimation<pcl::PointXYZI, pcl::Normal> normal_estimator;
-
   pcl::PointCloud<pcl::PointXYZI>::Ptr pcloud_ptr(new pcl::PointCloud<pcl::PointXYZI>(pcloud));
-  pcl::PointCloud<pcl::Normal>::Ptr pcloud_normals(new pcl::PointCloud<pcl::Normal>());
-  normal_estimator.setInputCloud(pcloud_ptr);
-
+  pcl::PointCloud<pcl::Normal>::Ptr pcloud_normals_ptr(new pcl::PointCloud<pcl::Normal>());
   pcl::search::KdTree<pcl::PointXYZI>::Ptr search_tree_ptr(new pcl::search::KdTree<pcl::PointXYZI>());
-  // search_tree_ptr->setInputCloud(pcloud_ptr);
+
+  pcl::NormalEstimation<pcl::PointXYZI, pcl::Normal> normal_estimator;
+  normal_estimator.setInputCloud(pcloud_ptr);
   normal_estimator.setSearchMethod(search_tree_ptr);
-  // normal_estimator.setRadiusSearch(10);
-  normal_estimator.setKSearch(20);
-
-  normal_estimator.compute(*pcloud_normals);
-
+  // normal_estimator.setRadiusSearch(0.1);
+  normal_estimator.setKSearch(3);
+  normal_estimator.compute(*pcloud_normals_ptr);
+  
   // Output
-  pcloud_with_normal.clear();
-  pcl::concatenateFields(pcloud, *pcloud_normals, pcloud_with_normal);
+  pcloud_with_normal.clear();  
+  pcl::concatenateFields(pcloud, *pcloud_normals_ptr, pcloud_with_normal);
 }
 
 static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
 {
-  pcl::PointCloud<pcl::PointXYZI> tmp;
+  double r;
+  pcl::PointXYZI p;
+  pcl::PointCloud<pcl::PointXYZI> tmp, scan;
+  pcl::PointCloud<pcl::PointXYZI>::Ptr filtered_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>());
+  pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>());
+  tf::Quaternion q;
+
+  Eigen::Matrix4f t_localizer(Eigen::Matrix4f::Identity());
+  Eigen::Matrix4f t_base_link(Eigen::Matrix4f::Identity());
+  tf::TransformBroadcaster br;
+  tf::Transform transform;
+
+  current_scan_time = input->header.stamp;
+
   pcl::fromROSMsg(*input, tmp);
 
-  pcl::PointCloud<pcl::PointXYZINormal> tmp2;
-  addNormalComponent(tmp, tmp2);
-  addNormalComponent(tmp, tmp2);
-  addNormalComponent(tmp, tmp2);
-  addNormalComponent(tmp, tmp2);
+  for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = tmp.begin(); item != tmp.end(); item++)
+  {
+    p.x = (double)item->x;
+    p.y = (double)item->y;
+    p.z = (double)item->z;
+    p.intensity = (double)item->intensity;
 
+    r = sqrt(pow(p.x, 2.0) + pow(p.y, 2.0));
+    if (r > min_scan_range)
+      scan.push_back(p);
+  }
 
+  // lidar_pcl::motionUndistort(scan, relative_pose_tf);
+  pcl::PointCloud<pcl::PointXYZI>::Ptr scan_ptr(new pcl::PointCloud<pcl::PointXYZI>(scan));
+
+  // Add initial point cloud to velodyne_map
+  if(initial_scan_loaded == 0)
+  {
+    add_scan_number++;
+    pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, tf_btol);
+    addNewScan(*transformed_scan_ptr);
+    initial_scan_loaded = 1;
+    isMapUpdate = true;
+   #ifdef OUTPUT_POSE
+    csv_stream << add_scan_number << "," << input->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
+               << _tf_x << "," << _tf_y << "," << _tf_z << "," 
+               << _tf_roll << "," << _tf_pitch << "," << _tf_yaw
+               << std::endl;
+   #endif // OUTPUT_POSE
+    std::cout << "Added initial scan to map" << std::endl;
+    return;
+  }
+
+  // Apply voxelgrid filter
+  if(voxel_leaf_size < 0.001)
+    filtered_scan_ptr = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>(*scan_ptr));
+  else
+  {
+    pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_filter;
+    voxel_grid_filter.setLeafSize(voxel_leaf_size, voxel_leaf_size, voxel_leaf_size);
+    voxel_grid_filter.setInputCloud(scan_ptr);
+    voxel_grid_filter.filter(*filtered_scan_ptr);
+  }
+
+  // Settin point cloud to be aligned
+  pcl::PointCloud<pcl::PointXYZINormal> filtered_scan_with_normal;
+  addNormalComponent(*filtered_scan_ptr, filtered_scan_with_normal);
+  std::vector<int> tmp_idx;
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr filtered_scan_ptr_2(new pcl::PointCloud<pcl::PointXYZINormal>());
+  pcl::removeNaNNormalsFromPointCloud(filtered_scan_with_normal, *filtered_scan_ptr_2, tmp_idx);
+  icp.setInputSource(filtered_scan_ptr_2);
+
+  // Set map as target point cloud
+  pcl::PointCloud<pcl::PointXYZI> local_map_valid;
+  tmp_idx.clear();
+  pcl::removeNaNFromPointCloud(local_map, local_map_valid, tmp_idx);
+
+  pcl::PointCloud<pcl::PointXYZINormal> local_map_with_normal;
+  addNormalComponent(local_map_valid, local_map_with_normal);
+
+  tmp_idx.clear();
+  pcl::PointCloud<pcl::PointXYZINormal> local_map_with_normal_valid;
+  pcl::removeNaNNormalsFromPointCloud(local_map_with_normal, local_map_with_normal_valid, tmp_idx);
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr local_map_ptr(new pcl::PointCloud<pcl::PointXYZINormal>(local_map_with_normal_valid));
+
+  pcl::IterativeClosestPointWithNormals<pcl::PointXYZINormal, pcl::PointXYZINormal>::Ptr icp(new pcl::IterativeClosestPointWithNormals<pcl::PointXYZINormal, pcl::PointXYZINormal>());
+  icp->setMaximumIterations(10);
+  icp->setInputSource(filtered_scan_ptr_2); // not cloud_source, but cloud_source_trans!
+  icp->setInputTarget(local_map_ptr);
+  icp->align(*filtered_scan_ptr_2, Eigen::Matrix4f::Identity());
+  std::cout << icp->getFinalTransformation() << std::endl;
 }
 
 void mySigintHandler(int sig) // Publish the map/final_submap if node is terminated
