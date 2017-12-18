@@ -1,19 +1,20 @@
 <?xml version="1.0" ?>
 <launch>
 
-  <!-- send table.xml to param server -->
+  <!-- I/O info -->
   <arg name="bag" default="/home/zwu/LIDAR-DATA/3oct-around-pana1.bag" />
   <arg name="start_time" default="0" /> <!-- all timings are in seconds -->
-  <arg name="play_duration" default="-1" /> <!-- set negative to play all -->
+  <arg name="play_duration" default="260" /> <!-- set negative to play all -->
   <arg name="namespace" default="" /> <!-- set to do multiple mapping at once -->
   <arg name="output_directory" default="$(env HOME)/icp_custom/$(arg namespace)/" />
 
   <!-- icp algorithm params -->
   <arg name="maximum_iterations" default="100" />
   <arg name="transformation_epsilon" default="0.01" />
-  <arg name="max_correspondence_distance" default="2" />
+  <arg name="max_correspondence_distance" default="1" />
   <arg name="euclidean_fitness_epsilon" default="0.001" />
-  <arg name="ransac_outlier_rejection_threshold" default="5" />
+  <arg name="ransac_iteration_number" default="30" />
+  <arg name="ransac_outlier_rejection_threshold" default="0.1" />
 
   <arg name="voxel_leaf_size" default="0.0" />
   <arg name="min_scan_range" default="3.0" />
@@ -21,38 +22,39 @@
   <arg name="min_add_scan_yaw_diff" default="0.013" />
 
   <!-- tf from lidar frame to car frame -->
-  <arg name="tf_x" default="1.2"/>
-  <arg name="tf_y" default="0.0"/>
-  <arg name="tf_z" default="2.0"/>
-  <arg name="tf_roll" default="0.0"/>
-  <arg name="tf_pitch" default="0.0"/>
-  <arg name="tf_yaw" default="0.0"/>
+  <arg name="tf_x" default="1.2" />
+  <arg name="tf_y" default="0.0" />
+  <arg name="tf_z" default="2.0" />
+  <arg name="tf_roll" default="0.0" />
+  <arg name="tf_pitch" default="0.0" />
+  <arg name="tf_yaw" default="0.0" />
 
   <!-- rosrun icp_mapping icp_mapping  -->
   <node pkg="icp_mapping" type="icp_point2plane_mapping" name="icp_point2plane_mapping" output="screen" >
-    <param name="bag_file" value="$(arg bag)" />
+    <param name="bag_file" value="$(arg bag)" type="str"/>
     <param name="start_time" value="$(arg start_time)" />
     <param name="play_duration" value="$(arg play_duration)" />
-    <param name="namespace" value="$(arg namespace)" />
-    <param name="output_directory" value="$(arg output_directory)" />   
+    <param name="namespace" value="$(arg namespace)" type="str" />
+    <param name="output_directory" value="$(arg output_directory)" type="str" />   
     
-    <param name="maximum_iterations" value="$(arg maximum_iterations)" />
-    <param name="transformation_epsilon" value="$(arg transformation_epsilon)" />
-    <param name="max_correspondence_distance" value="$(arg max_correspondence_distance)" />
-    <param name="euclidean_fitness_epsilon" value="$(arg euclidean_fitness_epsilon)" />
-    <param name="ransac_outlier_rejection_threshold" value="$(arg ransac_outlier_rejection_threshold)" />
+    <param name="maximum_iterations" value="$(arg maximum_iterations)" type="int" />
+    <param name="transformation_epsilon" value="$(arg transformation_epsilon)" type="double" />
+    <param name="max_correspondence_distance" value="$(arg max_correspondence_distance)" type="double" />
+    <param name="euclidean_fitness_epsilon" value="$(arg euclidean_fitness_epsilon)" type="double" />
+    <param name="ransac_iteration_number" value="$(arg ransac_iteration_number)" type="int" />
+    <param name="ransac_outlier_rejection_threshold" value="$(arg ransac_outlier_rejection_threshold)" type="double" />
 
-    <param name="voxel_leaf_size" value="$(arg voxel_leaf_size)" />
-    <param name="min_scan_range" value="$(arg min_scan_range)" />
-    <param name="min_add_scan_shift" value="$(arg min_add_scan_shift)" />
-    <param name="min_add_scan_yaw_diff" value="$(arg min_add_scan_yaw_diff)" />
+    <param name="voxel_leaf_size" value="$(arg voxel_leaf_size)" type="double" />
+    <param name="min_scan_range" value="$(arg min_scan_range)" type="double" />
+    <param name="min_add_scan_shift" value="$(arg min_add_scan_shift)" type="double" />
+    <param name="min_add_scan_yaw_diff" value="$(arg min_add_scan_yaw_diff)" type="double" />
 
-    <param name="tf_x" value="$(arg tf_x)" />
-    <param name="tf_y" value="$(arg tf_y)" />
-    <param name="tf_z" value="$(arg tf_z)" />
-    <param name="tf_roll" value="$(arg tf_roll)" />
-    <param name="tf_pitch" value="$(arg tf_pitch)" />
-    <param name="tf_yaw" value="$(arg tf_yaw)" />  
+    <param name="tf_x" value="$(arg tf_x)" type="double" />
+    <param name="tf_y" value="$(arg tf_y)" type="double" />
+    <param name="tf_z" value="$(arg tf_z)" type="double" />
+    <param name="tf_roll" value="$(arg tf_roll)" type="double" />
+    <param name="tf_pitch" value="$(arg tf_pitch)" type="double" />
+    <param name="tf_yaw" value="$(arg tf_yaw)" type="double" />  
   </node>
   
 </launch>

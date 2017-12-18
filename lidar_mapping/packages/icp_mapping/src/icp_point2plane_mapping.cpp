@@ -35,13 +35,13 @@
 #include <pcl/registration/icp.h>
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/features/normal_3d_omp.h>
+#include <pcl/console/time.h>
 
 // Custom libs
 #include <lidar_pcl/data_types.h>
 #include <lidar_pcl/motion_undistortion.h>
 
 #define OUTPUT_POSE
-#define ICP_POINT2PLANE
 
 // global variables
 static Pose previous_pose, guess_pose, current_pose, icp_pose, added_pose, localizer_pose;
@@ -54,16 +54,12 @@ static ros::Publisher icp_map_pub, current_scan_pub;
 
 static double diff, diff_x, diff_y, diff_z, diff_roll, diff_pitch, diff_yaw; // current_pose - previous_pose
 
-static std::unordered_map<Key, pcl::PointCloud<pcl::PointXYZI>> world_map;
-static pcl::PointCloud<pcl::PointXYZI> local_map;
+static std::unordered_map<Key, pcl::PointCloud<pcl::PointXYZINormal>> world_map;
+static pcl::PointCloud<pcl::PointXYZINormal> local_map;
 static Key local_key, previous_key;
 static const double TILE_WIDTH = 35;
 
-#ifdef ICP_POINT2PLANE
 static pcl::IterativeClosestPointWithNormals<pcl::PointXYZINormal, pcl::PointXYZINormal> icp;
-#else
-static pcl::IterativeClosestPoint<pcl::PointXYZI, pcl::PointXYZI> icp;
-#endif
 // static pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_filter;
 
 // Default values for ICP
@@ -71,6 +67,7 @@ static int maximum_iterations = 100;
 static double transformation_epsilon = 0.01;
 static double max_correspondence_distance = 1.0;
 static double euclidean_fitness_epsilon = 0.1;
+static int ransac_iteration_number = 30;
 static double ransac_outlier_rejection_threshold = 1.0;
 
 static double voxel_leaf_size = 1.0;
@@ -103,9 +100,9 @@ std::string csv_filename = "map_pose.csv";
 std::time_t process_begin = std::time(NULL);
 std::tm* pnow = std::localtime(&process_begin);
 
-static void addNewScan(const pcl::PointCloud<pcl::PointXYZI> new_scan)
+static void addNewScan(const pcl::PointCloud<pcl::PointXYZINormal> new_scan)
 {
-  for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = new_scan.begin(); item < new_scan.end(); item++)
+  for(pcl::PointCloud<pcl::PointXYZINormal>::const_iterator item = new_scan.begin(); item < new_scan.end(); item++)
   {
     // Get 2D point
     Key key{int(floor(item->x / TILE_WIDTH)),
@@ -129,7 +126,7 @@ static void addNormalComponent(pcl::PointCloud<pcl::PointXYZI>& pcloud,
   pcl::NormalEstimationOMP<pcl::PointXYZI, pcl::Normal> normal_estimator;
   normal_estimator.setInputCloud(pcloud_ptr);
   normal_estimator.setSearchMethod(search_tree_ptr);
-  normal_estimator.setRadiusSearch(0.1);
+  normal_estimator.setRadiusSearch(1.0);
   // normal_estimator.setKSearch(3);
   normal_estimator.compute(*pcloud_normals_ptr);
   
@@ -166,25 +163,26 @@ static void mapMaintenanceCallback(Pose local_pose)
   }
 }
 
-static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
+static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input_msg)
 {
   double r;
   pcl::PointXYZI p;
-  pcl::PointCloud<pcl::PointXYZI> tmp, scan;
-  pcl::PointCloud<pcl::PointXYZI>::Ptr filtered_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>());
-  pcl::PointCloud<pcl::PointXYZI>::Ptr transformed_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>());
+  pcl::PointCloud<pcl::PointXYZI> input_tmp, input_src, scan;
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr filtered_src_ptr(new pcl::PointCloud<pcl::PointXYZINormal>());
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr transformed_src_ptr(new pcl::PointCloud<pcl::PointXYZINormal>());
   tf::Quaternion q;
+  pcl::console::TicToc tt_timer;
 
   Eigen::Matrix4f t_localizer(Eigen::Matrix4f::Identity());
   Eigen::Matrix4f t_base_link(Eigen::Matrix4f::Identity());
   tf::TransformBroadcaster br;
   tf::Transform transform;
+  current_scan_time = input_msg->header.stamp;
 
-  current_scan_time = input->header.stamp;
+  pcl::fromROSMsg(*input_msg, input_tmp);
 
-  pcl::fromROSMsg(*input, tmp);
-
-  for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = tmp.begin(); item != tmp.end(); item++)
+  // Remove points that are too close, lets call this trimmming
+  for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = input_tmp.begin(); item != input_tmp.end(); item++)
   {
     p.x = (double)item->x;
     p.y = (double)item->y;
@@ -193,22 +191,27 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
 
     r = sqrt(pow(p.x, 2.0) + pow(p.y, 2.0));
     if (r > min_scan_range)
-      scan.push_back(p);
+      input_src.push_back(p);
   }
 
-  lidar_pcl::motionUndistort(scan, relative_pose_tf);
-  pcl::PointCloud<pcl::PointXYZI>::Ptr scan_ptr(new pcl::PointCloud<pcl::PointXYZI>(scan));
+  // Add normal component to source cloud
+  pcl::PointCloud<pcl::PointXYZINormal> input_src_with_normals;
+  addNormalComponent(input_src, input_src_with_normals);
+
+  // Do motion undistortion
+  lidar_pcl::motionUndistort(input_src_with_normals, relative_pose_tf);
+  pcl::PointCloud<pcl::PointXYZINormal>::Ptr input_src_with_normals_ptr(new pcl::PointCloud<pcl::PointXYZINormal>(input_src_with_normals));
 
   // Add initial point cloud to velodyne_map
   if(initial_scan_loaded == 0)
   {
     add_scan_number++;
-    pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, tf_btol);
-    addNewScan(*transformed_scan_ptr);
+    pcl::transformPointCloud(*input_src_with_normals_ptr, *transformed_src_ptr, tf_btol);
+    addNewScan(*transformed_src_ptr);
     initial_scan_loaded = 1;
     isMapUpdate = true;
    #ifdef OUTPUT_POSE
-    csv_stream << add_scan_number << "," << input->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
+    csv_stream << add_scan_number << "," << input_msg->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
                << _tf_x << "," << _tf_y << "," << _tf_z << "," 
                << _tf_roll << "," << _tf_pitch << "," << _tf_yaw
                << std::endl;
@@ -219,63 +222,39 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
 
   // Apply voxelgrid filter
   if(voxel_leaf_size < 0.001)
-    filtered_scan_ptr = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>(*scan_ptr));
+    filtered_src_ptr = pcl::PointCloud<pcl::PointXYZINormal>::Ptr(new pcl::PointCloud<pcl::PointXYZINormal>(*input_src_with_normals_ptr));
   else
   {
-    pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_filter;
+    pcl::VoxelGrid<pcl::PointXYZINormal> voxel_grid_filter;
     voxel_grid_filter.setLeafSize(voxel_leaf_size, voxel_leaf_size, voxel_leaf_size);
-    voxel_grid_filter.setInputCloud(scan_ptr);
-    voxel_grid_filter.filter(*filtered_scan_ptr);
+    voxel_grid_filter.setInputCloud(input_src_with_normals_ptr);
+    voxel_grid_filter.filter(*filtered_src_ptr);
   }
   
   // Setting point cloud to be aligned
- #ifdef ICP_POINT2PLANE
-  pcl::PointCloud<pcl::PointXYZINormal> filtered_scan_with_normal;
-  addNormalComponent(*filtered_scan_ptr, filtered_scan_with_normal);
-  std::vector<int> tmp_idx;
-  pcl::PointCloud<pcl::PointXYZINormal>::Ptr filtered_scan_ptr_2(new pcl::PointCloud<pcl::PointXYZINormal>());
-  pcl::removeNaNNormalsFromPointCloud(filtered_scan_with_normal, *filtered_scan_ptr_2, tmp_idx);
-  icp.setInputSource(filtered_scan_ptr_2);
-  // std::cout << "HEREss" << std::endl;
- #else
-  icp.setInputSource(filtered_scan_ptr);
- #endif
+  // std::vector<int> tmp_idx;
+  // pcl::PointCloud<pcl::PointXYZINormal>::Ptr filtered_scan_ptr_2(new pcl::PointCloud<pcl::PointXYZINormal>());
+  // pcl::removeNaNNormalsFromPointCloud(filtered_scan_with_normal, *filtered_scan_ptr_2, tmp_idx);
+  icp.setInputSource(filtered_src_ptr);
 
- // #ifdef ICP_POINT2PLANE
- //  // Set map as target point cloud
- //  pcl::PointCloud<pcl::PointXYZI> local_map_valid;
- //  tmp_idx.clear();
- //  pcl::removeNaNFromPointCloud(local_map, local_map_valid, tmp_idx);
-
- //  pcl::PointCloud<pcl::PointXYZINormal> local_map_with_normal;
- //  addNormalComponent(local_map_valid, local_map_with_normal);
-
- //  tmp_idx.clear();
- //  pcl::PointCloud<pcl::PointXYZINormal> local_map_with_normal_valid;
- //  pcl::removeNaNNormalsFromPointCloud(local_map_with_normal, local_map_with_normal_valid, tmp_idx);
- //  pcl::PointCloud<pcl::PointXYZINormal>::Ptr local_map_ptr(new pcl::PointCloud<pcl::PointXYZINormal>(local_map_with_normal_valid));
- // #else
   if(isMapUpdate == true)
   {
-   #ifdef ICP_POINT2PLANE
-    pcl::PointCloud<pcl::PointXYZI> local_map_valid;
-    tmp_idx.clear();
-    pcl::removeNaNFromPointCloud(local_map, local_map_valid, tmp_idx);
+    tt_timer.tic();
+    // pcl::PointCloud<pcl::PointXYZI> local_map_valid;
+    // tmp_idx.clear();
+    // pcl::removeNaNFromPointCloud(local_map, local_map_valid, tmp_idx);
 
-    pcl::PointCloud<pcl::PointXYZINormal> local_map_with_normal;
-    addNormalComponent(local_map_valid, local_map_with_normal);
+    // pcl::PointCloud<pcl::PointXYZINormal> local_map_with_normal;
+    // addNormalComponent(local_map_valid, local_map_with_normal);
 
-    tmp_idx.clear();
-    pcl::PointCloud<pcl::PointXYZINormal> local_map_with_normal_valid;
-    pcl::removeNaNNormalsFromPointCloud(local_map_with_normal, local_map_with_normal_valid, tmp_idx);
-    pcl::PointCloud<pcl::PointXYZINormal>::Ptr local_map_ptr(new pcl::PointCloud<pcl::PointXYZINormal>(local_map_with_normal_valid));
-   #else
-    pcl::PointCloud<pcl::PointXYZI>::Ptr local_map_ptr(new pcl::PointCloud<pcl::PointXYZI>(local_map));
-   #endif
+    // tmp_idx.clear();
+    // pcl::PointCloud<pcl::PointXYZINormal> local_map_with_normal_valid;
+    // pcl::removeNaNNormalsFromPointCloud(local_map_with_normal, local_map_with_normal_valid, tmp_idx);
+    pcl::PointCloud<pcl::PointXYZINormal>::Ptr local_map_ptr(new pcl::PointCloud<pcl::PointXYZINormal>(local_map));
     icp.setInputTarget(local_map_ptr);
     isMapUpdate = false;
+    std::cout << "\tsetInputTarget() took: " << tt_timer.toc() << "ms" << std::endl;
   }
- // #endif
 
   // Calculate guessed pose for matching scan to map    
   guess_pose.x = previous_pose.x + diff_x;
@@ -292,20 +271,19 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
   Eigen::Translation3f init_translation(guess_pose.x, guess_pose.y, guess_pose.z);
   Eigen::Matrix4f init_guess = (init_translation * init_rotation_z * init_rotation_y * init_rotation_x) * tf_btol;
 
- #ifdef ICP_POINT2PLANE
   pcl::PointCloud<pcl::PointXYZINormal>::Ptr output_cloud(new pcl::PointCloud<pcl::PointXYZINormal>);
- #else 
-  pcl::PointCloud<pcl::PointXYZI>::Ptr output_cloud(new pcl::PointCloud<pcl::PointXYZI>);
- #endif
 
+  tt_timer.tic();
   icp.align(*output_cloud, init_guess);
+  std::cout << "\tICP align() took: " << tt_timer.toc() << "ms" << std::endl;
+
   fitness_score = icp.getFitnessScore();
 
   t_localizer = icp.getFinalTransformation();  // localizer
 
   t_base_link = t_localizer * tf_ltob;         // base_link
 
-  pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, t_localizer);
+  pcl::transformPointCloud(*input_src_with_normals_ptr, *transformed_src_ptr, t_localizer);
 
   tf::Matrix3x3 mat_l, mat_b;
 
@@ -355,10 +333,9 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
   // Calculate the shift between added_pos and current_pos
   double t_shift = sqrt(pow(current_pose.x - added_pose.x, 2.0) + pow(current_pose.y - added_pose.y, 2.0));
   double R_shift = std::fabs(current_pose.yaw - added_pose.yaw);
-  pcl::transformPointCloud(*scan_ptr, *transformed_scan_ptr, t_localizer);
   if(t_shift >= min_add_scan_shift || R_shift >= min_add_scan_yaw_diff)
   {
-    addNewScan(*transformed_scan_ptr);
+    addNewScan(*transformed_src_ptr);
     add_scan_number++;
     added_pose.x = current_pose.x;
     added_pose.y = current_pose.y;
@@ -368,7 +345,7 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
     added_pose.yaw = current_pose.yaw;
     isMapUpdate = true;
    #ifdef OUTPUT_POSE
-    csv_stream << add_scan_number << "," << input->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
+    csv_stream << add_scan_number << "," << input_msg->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
                << localizer_pose.x << "," << localizer_pose.y << "," << localizer_pose.z << ","
                << localizer_pose.roll << "," << localizer_pose.pitch << "," << localizer_pose.yaw
                << std::endl;
@@ -377,7 +354,7 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
  #ifdef OUTPUT_POSE
   else
   { // outputing into csv, with add_scan_number = 0
-    csv_stream << 0 << "," << input->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
+    csv_stream << 0 << "," << input_msg->header.seq << "," << current_scan_time.sec << "," << current_scan_time.nsec << ","
                << localizer_pose.x << "," << localizer_pose.y << "," << localizer_pose.z << ","
                << localizer_pose.roll << "," << localizer_pose.pitch << "," << localizer_pose.yaw
                << std::endl;
@@ -407,18 +384,16 @@ static void icpMappingCallback(const sensor_msgs::PointCloud2::ConstPtr& input)
   icp_map_pub.publish(*map_msg_ptr);
 
   sensor_msgs::PointCloud2::Ptr scan_msg_ptr(new sensor_msgs::PointCloud2);
-  transformed_scan_ptr->header.frame_id = "map";
-  pcl::toROSMsg(*transformed_scan_ptr, *scan_msg_ptr);
+  transformed_src_ptr->header.frame_id = "map";
+  pcl::toROSMsg(*transformed_src_ptr, *scan_msg_ptr);
   current_scan_pub.publish(*scan_msg_ptr);
 
   std::cout << "-----------------------------------------------------------------" << std::endl;
-  std::cout << "Sequence number: " << input->header.seq << std::endl;
-  std::cout << "Number of scan points: " << scan_ptr->size() << " points." << std::endl;
-  std::cout << "Number of filtered scan points: " << filtered_scan_ptr->size() << " points." << std::endl;
-  std::cout << "Local map: " << local_map.points.size() << " points.\n";
+  std::cout << "Sequence number: " << input_msg->header.seq << std::endl;
+  std::cout << "Number of scan points: " << input_src.size() << " points." << std::endl;
+  std::cout << "Number of filtered scan points: " << filtered_src_ptr->size() << " points." << std::endl;
+  std::cout << "Local map: " << local_map.size() << " points.\n";
   // std::cout << "ICP has converged: " << has_converged << std::endl;
-  std::cout << "RANSAC iter: " << icp.getRANSACIterations() << "\n";
-  std::cout << "getUseReciprocalCorrespondences(): " << icp.getUseReciprocalCorrespondences() << "\n";
   std::cout << "Fitness score: " << fitness_score << std::endl;
   std::cout << "(x,y,z,roll,pitch,yaw):" << std::endl;
   std::cout << "(" << current_pose.x << ", " << current_pose.y << ", " << current_pose.z << ", " << current_pose.roll
@@ -455,13 +430,12 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
   config_stream << "Start time: " << _start_time << std::endl;
   config_stream << "Play duration: " << (_play_duration < 0 ? "all" : std::to_string(_play_duration)) << std::endl;
   config_stream << "Corrected end scan pose: ..\n" << std::endl;
- #ifdef ICP_POINT2PLANE
   config_stream << "Method: ICP Point to Plane" << std::endl;
- #endif
   config_stream << "\nMaximum Iteration Number: " << maximum_iterations << std::endl;
   config_stream << "Transformation Epsilon: " << transformation_epsilon << std::endl;
   config_stream << "Max Correspondence Dist: " << max_correspondence_distance << std::endl;
   config_stream << "Euclidean Fitness Epsilon: " << euclidean_fitness_epsilon << std::endl;
+  config_stream << "RANSAC Maximum Iteration Number: " << ransac_iteration_number << std::endl;
   config_stream << "RANSAC Outlier Rejection Threshold: " << ransac_outlier_rejection_threshold << std::endl;
   config_stream << "\nLeaf Size: " << voxel_leaf_size << std::endl;
   config_stream << "Minimum Scan Range: " << min_scan_range << std::endl;
@@ -477,7 +451,7 @@ void mySigintHandler(int sig) // Publish the map/final_submap if node is termina
   std::cout << "-----------------------------------------------------------------\n";
   std::cout << "Writing the last map to pcd file before shutting down node..." << std::endl;
 
-  pcl::PointCloud<pcl::PointXYZI> last_map;
+  pcl::PointCloud<pcl::PointXYZINormal> last_map;
   for (auto& item: world_map) 
     last_map += item.second;
 
@@ -550,6 +524,7 @@ int main(int argc, char** argv)
   private_nh.getParam("transformation_epsilon", transformation_epsilon);
   private_nh.getParam("max_correspondence_distance", max_correspondence_distance);
   private_nh.getParam("euclidean_fitness_epsilon", euclidean_fitness_epsilon);
+  private_nh.getParam("ransac_iteration_number", ransac_iteration_number);
   private_nh.getParam("ransac_outlier_rejection_threshold", ransac_outlier_rejection_threshold);
 
   private_nh.getParam("voxel_leaf_size", voxel_leaf_size);
@@ -574,6 +549,7 @@ int main(int argc, char** argv)
   std::cout << "transformation_epsilon: " << transformation_epsilon << std::endl;
   std::cout << "max_correspondence_distance: " << max_correspondence_distance << std::endl;
   std::cout << "euclidean_fitness_epsilon: " << euclidean_fitness_epsilon << std::endl;
+  std::cout << "ransac_iteration_number: " << ransac_iteration_number << std::endl;
   std::cout << "ransac_outlier_rejection_threshold: " << ransac_outlier_rejection_threshold << std::endl;
   std::cout << "voxel_leaf_size: " << voxel_leaf_size << std::endl;
   std::cout << "min_scan_range: " << min_scan_range << std::endl;
@@ -610,7 +586,7 @@ int main(int argc, char** argv)
   icp.setTransformationEpsilon(transformation_epsilon);
   icp.setMaxCorrespondenceDistance(max_correspondence_distance);
   icp.setEuclideanFitnessEpsilon(euclidean_fitness_epsilon);
-  icp.setRANSACIterations(100);
+  icp.setRANSACIterations(ransac_iteration_number);
   icp.setRANSACOutlierRejectionThreshold(ransac_outlier_rejection_threshold);
   icp.setUseReciprocalCorrespondences(false);
   // voxel_grid_filter.setLeafSize(voxel_leaf_size, voxel_leaf_size, voxel_leaf_size);
