@@ -11,7 +11,7 @@
   <!-- icp algorithm params -->
   <arg name="maximum_iterations" default="100" />
   <arg name="transformation_epsilon" default="0.01" />
-  <arg name="max_correspondence_distance" default="1" />
+  <arg name="max_correspondence_distance" default="1.5" />
   <arg name="euclidean_fitness_epsilon" default="0.001" />
   <arg name="ransac_iteration_number" default="30" />
   <arg name="ransac_outlier_rejection_threshold" default="0.1" />

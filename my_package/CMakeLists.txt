@@ -121,7 +121,7 @@ generate_dynamic_reconfigure_options(
 catkin_package(
   INCLUDE_DIRS include
 #  LIBRARIES base_vision
-  CATKIN_DEPENDS std_msgs message_runtime autoware_msgs
+  CATKIN_DEPENDS std_msgs message_runtime
 #  DEPENDS system_lib
 )
 
@@ -157,11 +157,11 @@ macro(add_new_opencv_node name)
   target_link_libraries(${name} ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
 endmacro()
 
-macro(add_new_autoware_node name)
-  add_executable(${name} src/${name}.cpp)
-  add_dependencies(${name} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg autoware_msgs_generate_messages_cpp)
-  target_link_libraries(${name} ${catkin_LIBRARIES})
-endmacro()
+# macro(add_new_autoware_node name)
+#   add_executable(${name} src/${name}.cpp)
+#   add_dependencies(${name} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg autoware_msgs_generate_messages_cpp)
+#   target_link_libraries(${name} ${catkin_LIBRARIES})
+# endmacro()
 
 macro(add_new_ceres_node name)
   add_executable(${name} src/${name}.cpp)
@@ -175,8 +175,8 @@ add_new_ceres_node(pose_optimization_with_normals_regularization)
 add_new_opencv_node(imu_to_csv)
 add_new_node(imu_publisher)
 add_new_node(cloud_frame_conversion)
-add_new_autoware_node(offset_mapping)
-add_new_autoware_node(csv_offset_mapping)
+# add_new_autoware_node(offset_mapping)
+# add_new_autoware_node(csv_offset_mapping)
 add_new_node(my_pcl)
 add_new_node(submap_merger)
 add_new_node(async_submap_merger)
