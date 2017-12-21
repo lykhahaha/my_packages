@@ -30,25 +30,28 @@ int main(int argc, char** argv)
   ros::init(argc, argv, "import_to_bag");
   ros::NodeHandle nh;
   ros::Publisher pub = nh.advertise<sensor_msgs::PointCloud2>("/points_raw", 1);
+
+  std::string  csv_filename = "LidarTimestamp.csv";
   // Heads-up reminder for usage
   std::cout << "INFO: Reading data in the txts/ directory." << std::endl;
-  std::cout << "Reading LidarTimestamp14Dec.csv file in current directory." << std::endl;
+  std::cout << "Reading " << csv_filename << " file in current directory." << std::endl;
   std::cout << "Please ensure that bags/ and pcds/ directory ARE CREATED in this directory." << std::endl;
   std::cout << "Also ensure that ONLY .txt files with the correct format are in txts/ directory." << std::endl;
+
   // Output bag file
   rosbag::Bag bag;
-  bag.open("bags/14dec-carpark.bag", rosbag::bagmode::Write);
+  bag.open("bags/18dec-carpark.bag", rosbag::bagmode::Write);
 
   // Timestamp data
   std::ifstream time_stamp_stream;
   try
   {
-    time_stamp_stream.open("LidarTimestamp14Dec.csv");
+    time_stamp_stream.open(csv_filename);
   }
   catch(std::exception& e)
   {
     std::cout << e.what() << std::endl;
-    std::cout << "ERROR: It seems that LidarTimestamp14Dec.csv is not available? Instead, use: \n";
+    std::cout << "ERROR: It seems that " << csv_filename << " is not available? Instead, use: \n";
     std::cout << "\trosrun my_package import_to_bag_nostamp\n";
     return(-1);
   }
@@ -64,7 +67,7 @@ int main(int argc, char** argv)
 
   // Processing
   time_stamp_stream.close();
-  time_stamp_stream.open("LidarTimestamp14Dec.csv");
+  time_stamp_stream.open(csv_filename);
   unsigned int file_number = 1;
   unsigned int seq = 0;
   uint64_t sec, nsec;
@@ -127,7 +130,6 @@ int main(int argc, char** argv)
     nsec = std::stoull(time_stamp_str.c_str()) % 1000000 * 1000; // to us to ns
     std::cout << "sec: " << sec << "\n";
     std::cout << "nsec: " << nsec << std::endl;
-    std::cout << "---------------------------------------" << std::endl;
 
     // Write to bag file
     sensor_msgs::PointCloud2::Ptr scan_msg_ptr(new sensor_msgs::PointCloud2);
