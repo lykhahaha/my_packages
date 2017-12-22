@@ -13,8 +13,8 @@ using namespace std;
 
 int main(int argc, char **argv)
 {
-  ros::init(argc, argv, "ply_colorizer");
-  ros::NodeHandle n;
+  // ros::init(argc, argv, "ply_colorizer");
+  // ros::NodeHandle n;
 
   if(argc != 3)
   {

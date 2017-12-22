@@ -27,20 +27,22 @@ instead of putting the directory as an argument because I have not implement tha
 
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "import_to_bag");
-  ros::NodeHandle nh;
-  ros::Publisher pub = nh.advertise<sensor_msgs::PointCloud2>("/points_raw", 1);
+  // ros::init(argc, argv, "import_to_bag");
+  // ros::NodeHandle nh;
+  // ros::Publisher pub = nh.advertise<sensor_msgs::PointCloud2>("/points_raw", 1);
 
-  std::string  csv_filename = "LidarTimestamp.csv";
+  std::string csv_filename = "LidarTimestamp.csv";
   // Heads-up reminder for usage
   std::cout << "INFO: Reading data in the txts/ directory." << std::endl;
-  std::cout << "Reading " << csv_filename << " file in current directory." << std::endl;
-  std::cout << "Please ensure that bags/ and pcds/ directory ARE CREATED in this directory." << std::endl;
+  std::cout << "INFO: Reading " << csv_filename << " file in current directory." << std::endl;
+  std::cout << "\nPlease ensure that bags/ and pcds/ directory ARE CREATED in this directory." << std::endl;
   std::cout << "Also ensure that ONLY .txt files with the correct format are in txts/ directory." << std::endl;
 
   // Output bag file
   rosbag::Bag bag;
-  bag.open("bags/18dec-carpark.bag", rosbag::bagmode::Write);
+  std::string bag_filename = "bags/new.bag";
+  std::cout << "Output: " << bag_filename << std::endl;
+  bag.open(bag_filename, rosbag::bagmode::Write);
 
   // Timestamp data
   std::ifstream time_stamp_stream;
@@ -120,7 +122,7 @@ int main(int argc, char** argv)
     }
     // Write to pcd file
     // pcl::io::savePCDFileBinary("pcds/Lidar" + std::to_string(file_number) + ".pcd", scan);
-    std::cout << "Saved [" << scan.size() << " points, " << points_skipped 
+    std::cout << "(Disabled) Saved [" << scan.size() << " points, " << points_skipped 
               << " skipped] points to pcds/Lidar" << file_number << ".pcd" << std::endl;
 
     // Timestamp for msg
@@ -138,9 +140,9 @@ int main(int argc, char** argv)
     scan_msg_ptr->header.stamp.sec = sec;
     scan_msg_ptr->header.stamp.nsec = nsec;
     scan_msg_ptr->header.frame_id = frame_id;
-    // bag.write("/points_raw", ros::Time(sec, nsec), *scan_msg_ptr); 
-    bag.write("/points_raw", ros::Time::now(), *scan_msg_ptr); 
-    pub.publish(*scan_msg_ptr);
+    bag.write("/points_raw", ros::Time(sec, nsec), *scan_msg_ptr); 
+    // bag.write("/points_raw", ros::Time::now(), *scan_msg_ptr); 
+    // pub.publish(*scan_msg_ptr);
     file_number++;     
   }
   catch(std::exception& e)
@@ -151,7 +153,7 @@ int main(int argc, char** argv)
 
   bag.close();
 
-  std::cout << "Process: " << file_number - 1 << " / Expected: " << file_count << std::endl;
+  std::cout << "Processed: " << file_number - 1 << " / Expected: " << file_count << std::endl;
   std::cout << "Finished. Wrote bag file to bags/." << std::endl;
 
   return 0;

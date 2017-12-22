@@ -3,21 +3,21 @@
 #include <ros/duration.h>
 #include <rosbag/bag.h>
 #include <rosbag/view.h>
-// // #include <dynamic_reconfigure/server.h>
+// #include <dynamic_reconfigure/server.h>
 // #include <sensor_msgs/PointCloud2.h>
-// // #include <my_package/transformPointsConfig.h>
+// #include <my_package/transformPointsConfig.h>
 
 // #include <pcl/io/io.h>
 // #include <pcl/io/pcd_io.h>
-// // #include <pcl/io/ply_io.h>
-// // #include <pcl/point_cloud.h>
+// #include <pcl/io/ply_io.h>
+// #include <pcl/point_cloud.h>
 #include <pcl/common/common.h>
-// // #include <pcl/common/angles.h>
+// #include <pcl/common/angles.h>
 // #include <pcl/common/transforms.h>
 #include <pcl_conversions/pcl_conversions.h>
-// // #include <pcl/point_types.h>
-// // #include <pcl/conversions.h>
-// // #include <pcl_ros/transforms.h>
+// #include <pcl/point_types.h>
+// #include <pcl/conversions.h>
+#include <pcl/common/transforms.h>
 // #include <pcl/filters/voxel_grid.h>
 // #include <pcl/kdtree/kdtree_flann.h>
 
@@ -26,6 +26,8 @@
 // #include <sstream>
 #include <string>
 #include <vector>
+
+// #define OFFSET_TRANSFORM
 
 // struct pose
 // {
@@ -48,9 +50,18 @@
 // }
 
 int main(int argc, char** argv)
-{  
+{ 
+  // Input data 
+  std::string bagfile = "/home/zwu/18dec-datacollection/round2/bags/18dec-carpark.bag";
+  std::string camerafile = "/home/zwu/18dec-datacollection/round2/18dec-round2/timestamp.txt";
+  std::string output_dir = "/home/zwu/18dec-datacollection/round2/lidarscaninput_offset/";
+ 
+ #ifdef OFFSET_TRANSFORM
+  Eigen::Affine3d offset_tf;
+  pcl::getTransformation(0, 0, 0, -0.02, 0, -0.01, offset_tf);
+ #endif
+
   // Load bag
-  std::string bagfile = "/home/zwu/14dec-datacollection/bags/14dec-carpark.bag";
   std::string bagtopic = "/points_raw";
   std::cout << "Reading bag: " << bagfile << " [topic: " << bagtopic << "]... " << std::flush;
   rosbag::Bag bag(bagfile, rosbag::bagmode::Read);
@@ -60,7 +71,6 @@ int main(int argc, char** argv)
   std::cout << "Done." << std::endl;
 
   // Load camera timestamps
-  std::string camerafile = "/home/zwu/14dec-datacollection/Cam1-6-14Dec/timestamp.txt";
   std::ifstream cam_stream;
   std::cout << "Loading camera timestamp: " << camerafile << std::endl;
   cam_stream.open(camerafile);
@@ -75,7 +85,6 @@ int main(int argc, char** argv)
 
   // Do process
   std::cout << "Start processing... " << std::endl;
-  std::string output_dir = "/home/zwu/14dec-datacollection/lidarscaninput_offset/";
   const double lidar_timestamp_offset = -2.1;
   int camIdx = 0, camIdxEnd = camera_times.size();
   BOOST_FOREACH(rosbag::MessageInstance const message, view)
@@ -118,7 +127,14 @@ int main(int argc, char** argv)
         pcl::fromROSMsg(*input_cloud, pcl_cloud);
         std::ofstream pointcloud_stream;
         pointcloud_stream.open(output_dir + std::to_string(camIdx+1) + ".txt");
+
+       #ifdef OFFSET_TRANSFORM
+        pcl::PointCloud<pcl::PointXYZI> pcl_cloud_offset;
+        pcl::transformPointCloud(pcl_cloud, pcl_cloud_offset, offset_tf);
+        for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = pcl_cloud_offset.begin(); item != pcl_cloud_offset.end(); item++)
+       #else
         for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = pcl_cloud.begin(); item != pcl_cloud.end(); item++)
+       #endif
         {
           char output_buffer[500];
           double x = item->x;
