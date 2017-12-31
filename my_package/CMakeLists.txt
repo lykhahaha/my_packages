@@ -12,7 +12,7 @@ find_package(catkin REQUIRED COMPONENTS
   lidar_pcl
   message_generation
   pcl_ros
-  # pcl_conversion
+  velodyne_pointcloud
   roscpp
   roslaunch
   rospy
@@ -120,7 +120,7 @@ generate_dynamic_reconfigure_options(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-#  LIBRARIES base_vision
+  LIBRARIES velodyne_pointcloud
   CATKIN_DEPENDS std_msgs message_runtime
 #  DEPENDS system_lib
 )
@@ -196,3 +196,4 @@ add_new_node(get_perspective_scan)
 add_new_node(quickscript)
 add_new_node(scan_from_bag_to_txt)
 add_new_node(visualize_pose)
+add_new_node(csv_to_bag)
