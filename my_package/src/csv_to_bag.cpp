@@ -9,13 +9,10 @@ Csv files must have their timestamps as names
 #include <ros/time.h>
 #include <sensor_msgs/PointCloud2.h>
 
-// #include <pcl/point_cloud.h>
 #include <pcl/io/pcd_io.h>
 #include <pcl/common/common.h>
-// #include <pcl_ros/transforms.h>
+#include <pcl/common/transforms.h>
 #include <pcl_conversions/pcl_conversions.h>
-// #include <Eigen/Geometry>
-// #include "boost/filesystem.hpp"
 #include <velodyne_pointcloud/point_types.h>
 
 #include <iostream>
@@ -23,6 +20,8 @@ Csv files must have their timestamps as names
 #include <sstream>
 #include <string>
 #include <vector>
+
+#define LOCAL_TO_WORLD_TF
 
 using namespace std;
 using namespace boost::filesystem;
@@ -50,10 +49,17 @@ int main(int argc, char** argv)
     return(-1);
   }
 
+#ifdef LOCAL_TO_WORLD_TF
+  // Transformation to base link and to world
+  Eigen::Affine3d lidar2base_tf;
+  pcl::getTransformation(0.002, -0.004, -0.957, 0.0140848, 0.00289725, -1.583066, lidar2base_tf);
+  Eigen::Affine3d base2world_tf;
+  pcl::getTransformation(0, 0, 0, 3.141593, 0, 0, base2world_tf);
+  Eigen::Affine3d lidar2world_tf = base2world_tf * lidar2base_tf;
+#endif // LOCAL_TO_WORLD_TF
+
   // Get a list of file in input_dir then sort
   std::vector<path> file_list;
-  // for(directory_iterator itr(input_dir); itr != directory_iterator(); ++itr)
-  //   file_list.push_back(itr);
   std::copy(directory_iterator(input_dir), directory_iterator(), back_inserter(file_list));
   std::sort(file_list.begin(), file_list.end()); 
 
@@ -118,6 +124,10 @@ int main(int argc, char** argv)
       scan.push_back(new_point);
     }
 
+#ifdef LOCAL_TO_WORLD_TF
+    pcl::transformPointCloud(scan, scan, lidar2world_tf);
+#endif // LOCAL_TO_WORLD_TF
+
     // Write to bag file
     sensor_msgs::PointCloud2::Ptr scan_msg_ptr(new sensor_msgs::PointCloud2);
     pcl::toROSMsg(scan, *scan_msg_ptr);
@@ -127,6 +137,8 @@ int main(int argc, char** argv)
     scan_msg_ptr->header.frame_id = frame_id;
     bag.write("/points_raw", ros::Time(sec, nsec), *scan_msg_ptr);
     seq++;
+    if(seq > 1000) // test 1st
+      break;
   }
 
   bag.close();
