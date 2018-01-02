@@ -23,8 +23,8 @@
 #include <string>
 #include <vector>
 
-// #define OUTPUT_INTERPOLATED_POSE // to a csv file
-// #define VOXEL_GRID_OCCLUSION
+#define OUTPUT_INTERPOLATED_POSE // to a csv file
+// #define VOXEL_GRID_OCCLUSION // do not enable
 #define OFFSET_TRANSFORM
 
 #ifdef VOXEL_GRID_OCCLUSION
@@ -115,7 +115,7 @@ int main(int argc, char** argv)
 
  #ifdef OUTPUT_INTERPOLATED_POSE
   std::ofstream intrpl_pose_stream;
-  std::string intrpl_pose_file = "/home/zwu/1dec-datacollection/second/interpolated_poses.csv";
+  std::string intrpl_pose_file = "/home/zwu/18dec-datacollection/round2/interpolated_poses.csv";
   intrpl_pose_stream.open(intrpl_pose_file);
   intrpl_pose_stream << "timestamp,x,y,z,roll,pitch,yaw" << std::endl;
  #endif

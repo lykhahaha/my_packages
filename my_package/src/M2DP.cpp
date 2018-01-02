@@ -36,7 +36,10 @@ int main(int argc, char** argv)
   // Do PCA and re-alignment
   pcl::PCA<pcl::PointXYZI> pca(false);
   pca.setInputCloud(processed_cloud.makeShared());
+  
+  
   std::cout << pca.getEigenVectors() << std::endl;
+
 
   return(0);
 }
