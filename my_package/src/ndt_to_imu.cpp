@@ -23,8 +23,8 @@ int main(int argc, char** argv)
 {
   if(argc != 4)
   {
-    std::cout << "Error: false number of args" << std::endl;
-    std::cout << "Usage: rosrun my_package ndt_to_imu INPUT_BAG INPUT_CSV_TRAJECTORY OUTPUT_BAG" << std::endl;
+    std::cout << "ERROR: false number of args" << std::endl;
+    std::cout << "!!! Usage: rosrun my_package ndt_to_imu INPUT_BAG INPUT_CSV_TRAJECTORY OUTPUT_BAG" << std::endl;
     return(-1);
   }
 
@@ -61,8 +61,9 @@ int main(int argc, char** argv)
   double roll = 0, pitch = 0, yaw = 0;
   bool isGetLine = false;
 
-  getline(csv_stream, line); // to skip header line
-
+  getline(csv_stream, line); // to skip header line in the csv
+  
+  // Iterate through the msgs in the input bag
   foreach(rosbag::MessageInstance const message, view)
   {
     // get new data and process values
@@ -104,7 +105,7 @@ int main(int argc, char** argv)
       std::cout << "No input PointCloud available. Waiting..." << std::endl;
       continue;
     }
-    else // check sequence & time match
+    else // check sequence & time match, else skip or end
     {
       if(input_cloud->header.seq < seq)
       {
@@ -127,19 +128,16 @@ int main(int argc, char** argv)
       }
     }
 
-    // Write point cloud msg > /velodyne_points
+    // Write point cloud msg -> /velodyne_points
     outbag.write("/velodyne_points", crnt_time, *input_cloud);
 
-    // Convert pose to tf then write msg > /tf
+    // Convert pose to tf then write msg -> /tf
     geometry_msgs::TransformStamped imu2world_tf;
     imu2world_tf.header.seq = seq;
     imu2world_tf.header.stamp = crnt_time;
     imu2world_tf.header.frame_id = "world";
     imu2world_tf.child_frame_id = "velodyne";
 
-    // tf::Quaternion imu_quat;
-    // imu_quat.setRPY(roll, pitch, yaw);
-    // imu_quat.normalize();
     imu2world_tf.transform.translation.x = x;
     imu2world_tf.transform.translation.y = y;
     imu2world_tf.transform.translation.z = z;
@@ -154,6 +152,7 @@ int main(int argc, char** argv)
     isGetLine = false;
   }
 
+  // Finished
   inbag.close();
   outbag.close();
   std::cout << "Finished. Output: " << f_outbag << std::endl;
