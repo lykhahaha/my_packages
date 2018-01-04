@@ -109,7 +109,6 @@ int main(int argc, char** argv)
         hist_bin[(idx_rho >= 0 ? idx_rho : 0) * numT + (idx_theta >= 0 ? idx_theta : 0)]++;
       }
       hist_bin /= input_cloud.size();
-      std::cout << hist_bin << std::endl;
       
       // Add this bin to signature matrix
       signature_matrix.row(i * numQ + j) = hist_bin.transpose();
@@ -117,29 +116,8 @@ int main(int argc, char** argv)
   }
 
   // run SVD on signature_matrix and use[u1, v1] as the final output
-  Eigen::BDCSVD<Eigen::MatrixXd> svd(signature_matrix);
-
-  // // Some test
-  // pcl::PointCloud<pcl::PointXYZI> new_cloud;
-  // for(int i = 0, i_end = processed_cloud.cols(); i != i_end; i++)
-  // {
-  //   pcl::PointXYZI new_point;
-  //   new_point.x = processed_cloud(0, i);
-  //   new_point.y = processed_cloud(1, i);
-  //   new_point.z = processed_cloud(2, i);
-  //   new_point.intensity = processed_cloud(3, i);
-  //   new_cloud.push_back(new_point);
-  // }
-
-  // pca.setInputCloud(new_cloud.makeShared());
-  // // std::cout << pca.getEigenVectors() << std::endl;
-  // Eigen::Vector4d cloud_centroid; // (x, y, z, 1)
-  // if(!pcl::compute3DCentroid(new_cloud, cloud_centroid))
-  // {
-  //   std::cout << "Failed to compute cloud centroid." << std::endl;
-  //   return(-1);
-  // }
-  // // std::cout << cloud_centroid << std::endl;
-  // // pcl::io::savePCDFileBinary("processed_" + f_pcd, processed_cloud);
+  Eigen::BDCSVD<Eigen::MatrixXd> svd(signature_matrix, Eigen::ComputeFullU | Eigen::ComputeFullV);
+  Eigen::MatrixXd m2dp(numP * numQ + numT * numR, 1);
+  m2dp << svd.matrixU().col(0), svd.matrixV().col(0);
   return(0);
 }
