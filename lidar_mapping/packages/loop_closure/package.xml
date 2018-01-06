@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>loop_closure</name>
+  <version>0.0.0</version>
+  <description>The loop_closure package</description>
+  <maintainer email="phamngtuananh@gmail.com">echo</maintainer>
+  <license>TODO</license>
+  <buildtool_depend>catkin</buildtool_depend>
+
+  <export>
+
+  </export>
+</package>

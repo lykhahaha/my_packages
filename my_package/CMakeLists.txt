@@ -5,7 +5,7 @@ project(my_package)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 
-find_package(catkin REQUIRED COMPONENTS
+find_package(catkin REQUIRED COMPONENTS roslaunch
   cv_bridge
   dynamic_reconfigure
   image_transport
@@ -14,7 +14,6 @@ find_package(catkin REQUIRED COMPONENTS
   pcl_ros
   # velodyne_pointcloud
   roscpp
-  roslaunch
   rospy
   sensor_msgs
   std_msgs
@@ -144,7 +143,7 @@ include_directories(include ${catkin_INCLUDE_DIRS} ${OpenCV_INCLUDE_DIRS} ${CERE
 ## as an example, code may need to be generated before libraries
 ## either from message generation or dynamic reconfigure
 
-SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -Wall -fopenmp -mavx ${CMAKE_CXX_FLAGS}")
+SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -Wall -fopenmp ${CMAKE_CXX_FLAGS}")
 
 macro(add_new_node name)
   add_executable(${name} src/${name}.cpp)

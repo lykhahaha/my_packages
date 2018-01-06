@@ -14,11 +14,6 @@
 #include <Eigen/Dense>
 #include <Eigen/SVD>
 
-#include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
-#include <opencv2/core/eigen.hpp>
-#include <opencv2/imgproc/imgproc.hpp>
-
 const double pi = 3.14159265358979323846;
 
 double remapped_atan2(double y, double x)
@@ -27,23 +22,13 @@ double remapped_atan2(double y, double x)
   return (angle > 0 ? angle : angle + 2 * pi);
 }
 
-int main(int argc, char** argv)
+bool getM2DP(const pcl::PointCloud<pcl::PointXYZI> input_cloud, Eigen::MatrixXd &m2dp)
 {
-  if(argc != 2)
+  if(input_cloud.size() == 0)
   {
-    std::cout << "Error: missing input file argument." << std::endl;
-    return(-1);
+    std::cout << "ERROR: Empty pointcloud!" << std::endl;
+    return(false);
   }
-
-  // Get input
-  std::string f_pcd = argv[1];
-  pcl::PointCloud<pcl::PointXYZI> input_cloud;
-  if(pcl::io::loadPCDFile<pcl::PointXYZI>(f_pcd, input_cloud) == -1)
-  {
-    std::cout << "Couldn't read pcd " << f_pcd << "." << std::endl;
-    return(-1);
-  }
-  std::cout << "Loaded " << input_cloud.size() << " data points from " << f_pcd << std::endl;
 
   // Key parameters
   const int numP = 4; // number of azimuth angles
@@ -65,8 +50,6 @@ int main(int argc, char** argv)
   processed_cloud.col(2) = Z_values.transpose();
 
   // Get distance to farthest point
-  // Eigen::MatrixXd rho2 = processed_cloud.array().square().rowwise  ().sum();
-  // double maxRho = sqrt(rho2.maxCoeff());
   double max_rho = sqrt(processed_cloud.array().square().rowwise().sum().maxCoeff());
   
   // Generate signature matrix A
@@ -120,32 +103,7 @@ int main(int argc, char** argv)
 
   // run SVD on signature_matrix and use[u1, v1] as the final output
   Eigen::BDCSVD<Eigen::MatrixXd> svd(signature_matrix, Eigen::ComputeFullU | Eigen::ComputeFullV);
-  Eigen::MatrixXd m2dp(numP * numQ + numT * numR, 1);
+  m2dp = Eigen::MatrixXd(numP * numQ + numT * numR, 1);
   m2dp << svd.matrixU().col(0), svd.matrixV().col(0);
-
-  // Convert to opencv matrix
-  cv::Mat m2dp_cv;
-  cv::eigen2cv(m2dp, m2dp_cv);
-
-  // Draw
-  int image_size = numP * numQ + numT * numR;
-  cv::Mat visual_image(image_size * 3, image_size, CV_8UC3, cv::Scalar(0, 0, 0));
-  cv::line(visual_image, cv::Point(0, image_size), cv::Point(image_size, image_size), cv::Scalar(255, 255, 255));
-
-  // cv::normalize(m2dp_cv, m2dp_cv, 0, image_size);
-  m2dp_cv = m2dp_cv * 500;
-  for(int i = 1; i < image_size; i++)
-  {
-    cv::line(visual_image,
-             cv::Point(i - 1, image_size - std::round(m2dp_cv.at<double>(i - 1))),
-             cv::Point(i, image_size - std::round(m2dp_cv.at<double>(i))),
-             cv::Scalar(255, 255, 0), 1, 8, 0);
-  }
-
-  // Display
-  cv::namedWindow(f_pcd, 0);
-  cv::imshow(f_pcd, visual_image);
-  std::cout << m2dp_cv << std::endl;
-  cv::waitKey(-1);
-  return(0);
+  return(true);
 }
