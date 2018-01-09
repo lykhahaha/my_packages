@@ -53,6 +53,7 @@
 #define MY_EXTRACT_SCANPOSE // do not use this, this is to extract scans and poses to close loop
 // #define LIMIT_HEIGHT 3.0 // filter out high points when aligning
 // #define CORRECT_SCAN_DEBUG
+// #define DOWNSAMPLE_ADD_MAP
 
 #ifdef MY_EXTRACT_SCANPOSE
 std::ofstream csv_stream;
@@ -235,7 +236,16 @@ static void correctLIDARscan(pcl::PointCloud<pcl::PointXYZI>& scan, Eigen::Affin
 
 static void add_new_scan(const pcl::PointCloud<pcl::PointXYZI> new_scan)
 {
+ #ifdef DOWNSAMPLE_ADD_MAP
+  pcl::PointCloud<pcl::PointXYZI>::Ptr new_scan_ptr(new pcl::PointCloud<pcl::PointXYZI>(new_scan));
+  pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_filter;
+  voxel_grid_filter.setLeafSize(0.2, 0.2, 0.2);
+  voxel_grid_filter.setInputCloud(new_scan_ptr);
+  voxel_grid_filter.filter(*new_scan_ptr);
+  for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = new_scan_ptr->begin(); item < new_scan_ptr->end(); item++)
+ #else
   for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = new_scan.begin(); item < new_scan.end(); item++)
+ #endif // DOWNSAMPLE_ADD_MAP
   {
     // Get 2D point
     Key key;
@@ -244,8 +254,11 @@ static void add_new_scan(const pcl::PointCloud<pcl::PointXYZI> new_scan)
 
     world_map[key].push_back(*item);
   }
-
+ #ifdef DOWNSAMPLE_ADD_MAP
+  local_map += *new_scan_ptr;
+ #else
   local_map += new_scan;
+ #endif // DOWNSAMPLE_ADD_MAP
 }
 
 static void ndt_mapping_callback(const sensor_msgs::PointCloud2::ConstPtr& input)
