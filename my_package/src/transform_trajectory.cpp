@@ -26,9 +26,9 @@ int main(int argc, char** argv)
   // Load input
   std::cout << "This node is used to transform trajectory arbitrarily." << std::endl;
   std::cout << "I used it to make the trajectory plotted in python more horizontal." << std::endl;
-  if(argc != 5)
+  if(argc != 6)
   {
-    std::cout << "Usage: rosrun my_package transform_trajectory \"csv_file\" \"roll\" \"pitch\" \"yaw\"" << std::endl;
+    std::cout << "Usage: rosrun my_package transform_trajectory INPUT_CSV OUTPUT_CSV \"roll\" \"pitch\" \"yaw\"" << std::endl;
     return -1;
   }
 
@@ -38,14 +38,14 @@ int main(int argc, char** argv)
 
   // Output holder
   std::ofstream out_stream;
-  std::string out_csv = "/home/zwu/tilted_trajectory.csv";
+  std::string out_csv = argv[2];
   out_stream.open(out_csv);
   out_stream << "key,sequence,sec,nsec,x,y,z,roll,pitch,yaw" << std::endl;
 
   // Transformation matrix for csv
-  double roll = std::stod(argv[2]);
-  double pitch = std::stod(argv[3]);
-  double yaw = std::stod(argv[4]);
+  double roll = std::stod(argv[3]);
+  double pitch = std::stod(argv[4]);
+  double yaw = std::stod(argv[5]);
   Eigen::Affine3d global_transform;
   pcl::getTransformation(0, 0, 0, roll, pitch, yaw, global_transform);
 
@@ -91,6 +91,6 @@ int main(int argc, char** argv)
                << x << "," << y << "," << z << "," 
                << roll << "," << pitch << "," << yaw << std::endl;
   }
-  std::cout << "Finished. Output: /home/zwu/tilted_trajectory.csv" << std::endl;
+  std::cout << "Finished. Output: " << out_csv << std::endl;
   return 0;
 }
