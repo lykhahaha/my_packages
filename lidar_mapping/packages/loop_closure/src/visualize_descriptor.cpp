@@ -77,7 +77,7 @@ int main(int argc, char** argv)
 {
   ros::init(argc, argv, "descriptor_visualizer");
   ros::NodeHandle nh;
-  ros::Subscriber pcl_sub = nh.subscribe("/points_raw", 1000, m2dpCallback);
+  ros::Subscriber pcl_sub = nh.subscribe("/velodyne_points", 1000, m2dpCallback);
 
   // Display
   cv::namedWindow("m2dp", cv::WINDOW_AUTOSIZE);

@@ -27,4 +27,6 @@ include_directories(
 SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -Wall -fopenmp -mavx ${CMAKE_CXX_FLAGS}")
 
 add_executable(visualize_descriptor src/visualize_descriptor.cpp)
+add_executable(distance_matrix src/distance_matrix.cpp)
 target_link_libraries(visualize_descriptor ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})
+target_link_libraries(distance_matrix ${catkin_LIBRARIES} ${OpenCV_LIBRARIES})

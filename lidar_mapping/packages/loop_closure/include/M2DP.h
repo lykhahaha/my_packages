@@ -22,7 +22,7 @@ double remapped_atan2(double y, double x)
   return (angle > 0 ? angle : angle + 2 * pi);
 }
 
-bool getM2DP(const pcl::PointCloud<pcl::PointXYZI> input_cloud, Eigen::MatrixXd &m2dp)
+bool getM2DP(const pcl::PointCloud<pcl::PointXYZI> input_cloud, Eigen::VectorXd &m2dp)
 {
   if(input_cloud.size() == 0)
   {
@@ -103,7 +103,15 @@ bool getM2DP(const pcl::PointCloud<pcl::PointXYZI> input_cloud, Eigen::MatrixXd 
 
   // run SVD on signature_matrix and use[u1, v1] as the final output
   Eigen::BDCSVD<Eigen::MatrixXd> svd(signature_matrix, Eigen::ComputeFullU | Eigen::ComputeFullV);
-  m2dp = Eigen::MatrixXd(numP * numQ + numT * numR, 1);
+  m2dp = Eigen::VectorXd(numP * numQ + numT * numR); // shape: (192, 1)
   m2dp << svd.matrixU().col(0), svd.matrixV().col(0);
   return(true);
+}
+
+bool getM2DP(const pcl::PointCloud<pcl::PointXYZI> input_cloud, Eigen::MatrixXd &m2dp)
+{
+  Eigen::VectorXd m2dp_vec;
+  bool ret = getM2DP(input_cloud, m2dp_vec);
+  m2dp = m2dp_vec.matrix();
+  return ret;
 }
