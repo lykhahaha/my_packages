@@ -91,7 +91,7 @@ void m2dpCallback(const sensor_msgs::PointCloud2::ConstPtr& input_msg)
   // Convert to opencv matrix
   cv::Mat cv_image(scan_num + 1, scan_num + 1, CV_8UC1);
   cv::eigen2cv(distance_matrix, cv_image);
-  std::cout << cv_image << std::endl;
+  cv_image.convertTo(cv_image, CV_8UC1);
 
   // Display
   cv::imshow("m2dp distance matrix", cv_image);
