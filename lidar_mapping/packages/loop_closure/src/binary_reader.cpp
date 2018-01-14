@@ -1,7 +1,9 @@
-// Reference: https://github.com/LiHeUA/M2DP/blob/master/M2DP.m
+#include <cmath>
+#include <fstream>
 #include <iostream>
 #include <string>
-#include <cmath>
+#include <sys/stat.h>
+#include <vector>
 
 #include <pcl/common/common.h>
 #include <pcl/common/centroid.h>
@@ -18,6 +20,7 @@ const double pi = 3.14159265358979323846;
 
 double remapped_atan2(double y, double x)
 {
+  // return std::atan2(y, x);
   double angle = std::atan2(y, x);
   return (angle > 0 ? angle : angle + 2 * pi);
 }
@@ -29,26 +32,27 @@ float re_invert(float x)
 
 bool getM2DP(const pcl::PointCloud<pcl::PointXYZI> input_cloud, Eigen::VectorXd &m2dp)
 {
-  if(input_cloud.size() == 0)
+  if (input_cloud.size() == 0)
   {
     std::cout << "ERROR: Empty pointcloud!" << std::endl;
-    return(false);
+    return (false);
   }
 
   // Key parameters
-  const int numP = 4; // number of azimuth angles
+  const int numP = 4;  // number of azimuth angles
   const int numQ = 16; // number of elevation angles
   const int numT = 16; // number of bins in theta (t)
-  const int numR = 8; // number of bins in rho (l), or number of cocentric circles
+  const int numR = 8;  // number of bins in rho (l), or number of cocentric circles
 
   // Do PCA, demean and re-align x/y-axis
-  pcl::PCA<pcl::PointXYZI> pca(false);
+  pcl::PCA<pcl::PointXYZI> pca(true);
   pca.setInputCloud(input_cloud.makeShared());
+
   Eigen::MatrixXd processed_cloud;
   pcl::demeanPointCloud(input_cloud, pca.getMean().cast<double>(), processed_cloud);
 
   processed_cloud.transposeInPlace();
-  Eigen::Matrix3f eigenVectors = pca.getEigenVectors();
+   Eigen::Matrix3f eigenVectors = pca.getEigenVectors();
   if(eigenVectors.col(0).array().sum() < 0)
     eigenVectors.col(0) = eigenVectors.col(0).unaryExpr(&re_invert);
   if(eigenVectors.col(1).array().sum() < 0)
@@ -64,17 +68,17 @@ bool getM2DP(const pcl::PointCloud<pcl::PointXYZI> input_cloud, Eigen::VectorXd 
 
   // Get distance to farthest point
   double max_rho = sqrt(processed_cloud.array().square().rowwise().sum().maxCoeff());
-  
+
   // Generate signature matrix A
-  Eigen::ArrayXd azimuth_list = Eigen::ArrayXd::LinSpaced(numP, -pi/2, pi/2);
-  Eigen::ArrayXd elevation_list = Eigen::ArrayXd::LinSpaced(numQ, 0, pi/2);
-  const double delta_theta = 2 * pi / numT; // angle of one theta-bin
+  Eigen::ArrayXd azimuth_list = Eigen::ArrayXd::LinSpaced(numP, -pi / 2, pi / 2);
+  Eigen::ArrayXd elevation_list = Eigen::ArrayXd::LinSpaced(numQ, 0, pi / 2);
+  const double delta_theta = 2 * pi / numT;  // angle of one theta-bin
   const double base_radius = (max_rho + 1e-4) / (numR * numR); // radius of the smallest circle
   Eigen::MatrixXd signature_matrix = Eigen::MatrixXd::Zero(numP * numQ, numT * numR);
-  for(int i = 0, i_end = azimuth_list.size(); i < i_end; i++)
+  for (int i = 0, i_end = azimuth_list.size(); i < i_end; i++)
   {
     double azimuth = azimuth_list[i];
-    for(int j = 0, j_end = elevation_list.size(); j < j_end; j++)
+    for (int j = 0, j_end = elevation_list.size(); j < j_end; j++)
     {
       double elevation = elevation_list[j];
 
@@ -96,7 +100,7 @@ bool getM2DP(const pcl::PointCloud<pcl::PointXYZI> input_cloud, Eigen::VectorXd 
       // Map data into polar coordinates
       Eigen::MatrixXd p_data_pol(input_cloud.size(), 2);
       p_data_pol.col(0) = p_data_xy.col(1).binaryExpr(p_data_xy.col(0), std::ptr_fun(remapped_atan2)); // theta
-      p_data_pol.col(1) = p_data_xy.array().square().rowwise().sum().array().sqrt(); // rho
+      p_data_pol.col(1) = p_data_xy.array().square().rowwise().sum().array().sqrt();                   // rho
 
       // Count points in bins
       Eigen::VectorXd hist_bin = Eigen::VectorXd::Zero(numT * numR);
@@ -107,24 +111,86 @@ bool getM2DP(const pcl::PointCloud<pcl::PointXYZI> input_cloud, Eigen::VectorXd 
 
         hist_bin[(idx_rho >= 0 ? idx_rho : 0) * numT + (idx_theta >= 0 ? idx_theta : 0)]++;
       }
+      if(i == 0 && j == 0)
+        std::cout << hist_bin << std::endl;
       hist_bin /= input_cloud.size();
-      
+
       // Add this bin to signature matrix
       signature_matrix.row(i * numQ + j) = hist_bin.transpose();
     }
   }
-
+  std::ofstream fout;
+  fout.open("sigA_output.txt");
+  for(int i = 0; i < signature_matrix.rows(); i++)
+  {
+    fout << signature_matrix.row(i) << std::endl;
+  }
+  fout.close();
   // run SVD on signature_matrix and use[u1, v1] as the final output
   Eigen::BDCSVD<Eigen::MatrixXd> svd(signature_matrix, Eigen::ComputeFullU | Eigen::ComputeFullV);
   m2dp = Eigen::VectorXd(numP * numQ + numT * numR); // shape: (192, 1)
   m2dp << svd.matrixU().col(0), svd.matrixV().col(0);
-  return(true);
+  return (true);
 }
 
-bool getM2DP(const pcl::PointCloud<pcl::PointXYZI> input_cloud, Eigen::MatrixXd &m2dp)
+pcl::PointCloud<pcl::PointXYZI> readBinFile(std::string fname)
 {
-  Eigen::VectorXd m2dp_vec;
-  bool ret = getM2DP(input_cloud, m2dp_vec);
-  m2dp = m2dp_vec.matrix();
-  return ret;
+  // allocate 4 MB buffer (only ~130*4*4 KB are needed)
+  int32_t num = 1000000;
+  float *data = (float *)malloc(num * sizeof(float));
+
+  // pointers
+  float *px = data + 0;
+  float *py = data + 1;
+  float *pz = data + 2;
+  float *pr = data + 3;
+
+  // load point cloud
+  pcl::PointCloud<pcl::PointXYZI> cloud;
+  FILE *stream;
+  stream = fopen(fname.c_str(), "rb");
+  num = fread(data, sizeof(float), num, stream) / 4;
+  for (int32_t i = 0; i < num; i++)
+  {
+    pcl::PointXYZI point;
+    point.x = *px;
+    point.y = *py;
+    point.z = *pz;
+    point.intensity = *pr;
+    cloud.push_back(point);
+    px += 4;
+    py += 4;
+    pz += 4;
+    pr += 4;
+  }
+  fclose(stream);
+  return cloud;
+}
+
+int main(int argc, char** argv)
+{
+  if(argc < 2)
+  {
+    std::cout << "ERROR: Input file missing" << std::endl;
+    return(-1);
+  }
+  std::string fname = argv[1];
+  pcl::PointCloud<pcl::PointXYZI> cloud = readBinFile(fname);
+  std::cout << "Read " << cloud.size() << " points from " << fname << std::endl;
+
+  Eigen::VectorXd m2dp;
+  if(!getM2DP(cloud, m2dp))
+  {
+    std::cout << "ERROR: could not get M2DP descriptor!" << std::endl;
+    return(-1);
+  }
+
+  std::ofstream fout;
+  fout.open(fname + "_output.txt");
+  for(int i = 0; i < 192; i++)
+  {
+    fout << m2dp(i) << std::endl;
+  }
+  fout.close();
+  return 0;
 }

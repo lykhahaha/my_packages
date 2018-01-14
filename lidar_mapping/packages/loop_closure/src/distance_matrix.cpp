@@ -24,7 +24,8 @@ int scan_num = 0;
 
 double map2grayscale(double x)
 {
-  return 255.0 / (x + 1);
+  x *= 150;
+  return (x > 255 ? 255.0 : x);
 }
 
 void m2dpCallback(const sensor_msgs::PointCloud2::ConstPtr& input_msg)
@@ -45,7 +46,7 @@ void m2dpCallback(const sensor_msgs::PointCloud2::ConstPtr& input_msg)
   for(auto itr = input_cloud.begin(), itr_end = input_cloud.end(); itr != itr_end; itr++)
   {
     double rho = itr->x * itr->x + itr->y * itr->y;
-    if(rho > 3.0 && rho < 30.0)
+    if(rho > 3.0 && rho < 120.0)
     {
       processed_cloud.push_back(*itr);
     }
@@ -63,7 +64,7 @@ void m2dpCallback(const sensor_msgs::PointCloud2::ConstPtr& input_msg)
     std::cout << "ERROR: could not get M2DP descriptor!" << std::endl;
     return;
   }
-  
+  m2dp = m2dp.array().abs();
   // std::cout << "Descriptors: (" << all_descriptors.rows() << ", " << all_descriptors.cols() << ")\n";
   // std::cout << "M2DP: (" << m2dp.rows() << ", " << m2dp.cols() << ")" << std::endl;
 
