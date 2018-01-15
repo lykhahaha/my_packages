@@ -24,7 +24,7 @@ int scan_num = 0;
 
 double map2grayscale(double x)
 {
-  x *= 150;
+  x *= 100;
   return (x > 255 ? 255.0 : x);
 }
 
@@ -64,9 +64,8 @@ void m2dpCallback(const sensor_msgs::PointCloud2::ConstPtr& input_msg)
     std::cout << "ERROR: could not get M2DP descriptor!" << std::endl;
     return;
   }
+
   m2dp = m2dp.array().abs();
-  // std::cout << "Descriptors: (" << all_descriptors.rows() << ", " << all_descriptors.cols() << ")\n";
-  // std::cout << "M2DP: (" << m2dp.rows() << ", " << m2dp.cols() << ")" << std::endl;
 
   if(scan_num != 0)
   {
@@ -75,7 +74,6 @@ void m2dpCallback(const sensor_msgs::PointCloud2::ConstPtr& input_msg)
 
     // Map the distances to [0, 255], grayscale 8bit
     L2_distances = L2_distances.unaryExpr(&map2grayscale);
-    // std::cout << L2_distances << std::endl;
 
     // Add to distance matrix
     distance_matrix.conservativeResize(distance_matrix.rows() + 1, distance_matrix.cols() + 1);

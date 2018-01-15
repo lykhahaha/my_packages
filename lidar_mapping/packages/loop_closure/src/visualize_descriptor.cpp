@@ -30,17 +30,18 @@ void m2dpCallback(const sensor_msgs::PointCloud2::ConstPtr& input_msg)
   for(auto itr = input_cloud.begin(), itr_end = input_cloud.end(); itr != itr_end; itr++)
   {
     double rho = itr->x * itr->x + itr->y * itr->y;
-    if(rho > 3.0 && rho < 30.0)
+    if(rho > 3.0 && rho < 120.0)
     {
       processed_cloud.push_back(*itr);
     }
   }
 
   pcl::PointCloud<pcl::PointXYZI>::Ptr processed_cloud_ptr(new pcl::PointCloud<pcl::PointXYZI>(processed_cloud));
-   pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_filter;
-   voxel_grid_filter.setLeafSize(0.2, 0.2, 0.2);
-   voxel_grid_filter.setInputCloud(processed_cloud_ptr);
-   voxel_grid_filter.filter(*processed_cloud_ptr);
+  // pcl::VoxelGrid<pcl::PointXYZI> voxel_grid_filter;
+  // voxel_grid_filter.setLeafSize(0.2, 0.2, 0.2);
+  // voxel_grid_filter.setInputCloud(processed_cloud_ptr);
+  // voxel_grid_filter.filter(*processed_cloud_ptr);
+
   // Get descriptor
   Eigen::MatrixXd m2dp;
   if(!getM2DP(*processed_cloud_ptr, m2dp))
@@ -48,6 +49,7 @@ void m2dpCallback(const sensor_msgs::PointCloud2::ConstPtr& input_msg)
     std::cout << "ERROR: could not get M2DP descriptor!" << std::endl;
     return;
   }
+  m2dp = m2dp.array().abs();
 
   // Convert to opencv matrix
   cv::Mat m2dp_cv;
