@@ -127,7 +127,6 @@ int main(int argc, char** argv)
 
     // Timestamp for msg
     // Time in microseconds i assume
-    seq++;
     sec = std::stoull(time_stamp_str.c_str()) / 1000000; // to s
     nsec = std::stoull(time_stamp_str.c_str()) % 1000000 * 1000; // to us to ns
     std::cout << "sec: " << sec << "\n";
@@ -143,7 +142,8 @@ int main(int argc, char** argv)
     bag.write("/points_raw", ros::Time(sec, nsec), *scan_msg_ptr); 
     // bag.write("/points_raw", ros::Time::now(), *scan_msg_ptr); 
     // pub.publish(*scan_msg_ptr);
-    file_number++;     
+    file_number++;
+    seq++;  
   }
   catch(std::exception& e)
   {

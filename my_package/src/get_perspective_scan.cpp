@@ -59,10 +59,10 @@ int main(int argc, char** argv)
   
   // Load input
   // std::string filename = argv[1];
-  std::string cloudfile = "/home/zwu/1dec-0859/1dec-carpark.pcd";
-  std::string posefile = "/home/zwu/18dec-datacollection/round2/localizing_pose.csv"; // localizing_pose
-  std::string camerafile = "/home/zwu/18dec-datacollection/round2/18dec-round2/timestamp.txt"; // cam timestamp
-  std::string file_location = "/home/zwu/18dec-datacollection/round2/lidar_offset_tf/"; // output dir
+  std::string cloudfile = "/home/zwu/LIDAR-DATA/1dec-carpark1.pcd";
+  std::string posefile = "/home/zwu/8jan-datacollection/8jan-datacollection-3/localizing_pose.csv"; // localizing_pose
+  std::string camerafile = "/home/zwu/8jan-datacollection/8jan-datacollection-3/timestamp.txt"; // cam timestamp
+  std::string file_location = "/home/zwu/8jan-datacollection/8jan-datacollection-3/lidar/"; // output dir
  #ifdef OFFSET_TRANSFORM
   Eigen::Affine3d offset_tf;
   pcl::getTransformation(0, 0, 0, -0.02, 0, -0.01, offset_tf);
@@ -115,7 +115,7 @@ int main(int argc, char** argv)
 
  #ifdef OUTPUT_INTERPOLATED_POSE
   std::ofstream intrpl_pose_stream;
-  std::string intrpl_pose_file = "/home/zwu/18dec-datacollection/round2/interpolated_poses.csv";
+  std::string intrpl_pose_file = "/home/zwu/8jan-datacollection/8jan-datacollection-3/interpolated_pose_8jan_round3.csv";
   intrpl_pose_stream.open(intrpl_pose_file);
   intrpl_pose_stream << "timestamp,x,y,z,roll,pitch,yaw" << std::endl;
  #endif
@@ -136,6 +136,7 @@ int main(int argc, char** argv)
     getline(line_stream, yaw_str);
 
     double current_time = std::stod(sec_str) + std::stod(nsec_str) / 1e9; // in seconds
+    // std::cout << std::fixed << std::setprecision(9) << current_time << std::endl;
     lidar_times.push_back(current_time + lidar_time_offset);
     Eigen::Affine3d tf_vtow;
     pcl::getTransformation(std::stod(x_str), std::stod(y_str), std::stod(z_str),
@@ -194,7 +195,7 @@ int main(int argc, char** argv)
       lIdx++; // to next lidar
       if(lIdx >= lIdx_end)
       {
-        std::cout << "INFO: End of camera timestamps. Exit." << std::endl;
+        std::cout << "INFO: End of lidar timestamps. Exit." << std::endl;
         break;
       }
       // Update pose_diff
