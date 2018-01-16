@@ -5,16 +5,15 @@ project(my_package)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 
-find_package(catkin REQUIRED COMPONENTS
+find_package(catkin REQUIRED COMPONENTS roslaunch
   cv_bridge
   dynamic_reconfigure
   image_transport
   lidar_pcl
   message_generation
   pcl_ros
-  velodyne_pointcloud
+  # velodyne_pointcloud
   roscpp
-  roslaunch
   rospy
   sensor_msgs
   std_msgs
@@ -24,6 +23,7 @@ find_package(catkin REQUIRED COMPONENTS
 find_package(PCL REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(Ceres REQUIRED)
+find_package(Eigen3 3.3 REQUIRED)
 roslaunch_add_file_check(launch)
 
 set(EXECUTABLE_OUTPUT_PATH ${PROJECT_SOURCE_DIR}/bin)
@@ -120,7 +120,7 @@ generate_dynamic_reconfigure_options(
 ## DEPENDS: system dependencies of this project that dependent projects also need
 catkin_package(
   INCLUDE_DIRS include
-  LIBRARIES velodyne_pointcloud
+  # LIBRARIES velodyne_pointcloud
   CATKIN_DEPENDS std_msgs message_runtime
 #  DEPENDS system_lib
 )
@@ -147,7 +147,8 @@ SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -Wall -fopenmp ${CMAKE_CXX_FLAGS}")
 
 macro(add_new_node name)
   add_executable(${name} src/${name}.cpp)
-  add_dependencies(${name} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg)
+  # add_dependencies(${name} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS} ${PROJECT_NAME}_gencfg)
+  add_dependencies(${name} ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
   target_link_libraries(${name} ${catkin_LIBRARIES})
 endmacro()
 
@@ -196,6 +197,8 @@ add_new_node(get_perspective_scan)
 add_new_node(quickscript)
 add_new_node(scan_from_bag_to_txt)
 add_new_node(visualize_pose)
-add_new_node(csv_to_bag)
-add_new_node(M2DP)
+# add_new_node(csv_to_bag)
 add_new_node(ndt_to_imu)
+
+# SET(CMAKE_CXX_FLAGS "-std=c++11 -O2 -g -Wall -fopenmp -mavx ${CMAKE_CXX_FLAGS} -I /usr/local/include/eigen3/")
+add_new_node(M2DP)
