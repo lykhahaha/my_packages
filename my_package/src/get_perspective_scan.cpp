@@ -59,10 +59,10 @@ int main(int argc, char** argv)
   
   // Load input
   // std::string filename = argv[1];
-  std::string cloudfile = "/home/zwu/LIDAR-DATA/1dec-carpark1.pcd";
-  std::string posefile = "/home/zwu/8jan-datacollection/8jan-datacollection-3/localizing_pose.csv"; // localizing_pose
-  std::string camerafile = "/home/zwu/8jan-datacollection/8jan-datacollection-3/timestamp.txt"; // cam timestamp
-  std::string file_location = "/home/zwu/8jan-datacollection/8jan-datacollection-3/lidar/"; // output dir
+  std::string cloudfile = "/home/zwu/Desktop/CarPark-2-8-Jan.pcd";
+  std::string posefile = "/home/zwu/16jan-datacollection/16-Jan-CarPark2-DataCollection/R3/localizing_pose.csv"; // localizing_pose
+  std::string camerafile = "/home/zwu/16jan-datacollection/16-Jan-CarPark2-DataCollection/R3/timestamp.txt"; // cam timestamp
+  std::string file_location = "/home/zwu/16jan-datacollection/16-Jan-CarPark2-DataCollection/R3/lidar/"; // output dir
  #ifdef OFFSET_TRANSFORM
   Eigen::Affine3d offset_tf;
   pcl::getTransformation(0, 0, 0, -0.02, 0, -0.01, offset_tf);
@@ -115,7 +115,7 @@ int main(int argc, char** argv)
 
  #ifdef OUTPUT_INTERPOLATED_POSE
   std::ofstream intrpl_pose_stream;
-  std::string intrpl_pose_file = "/home/zwu/8jan-datacollection/8jan-datacollection-3/interpolated_pose_8jan_round3.csv";
+  std::string intrpl_pose_file = "/home/zwu/16jan-datacollection/16-Jan-CarPark2-DataCollection/R3/interpolated_pose_16jan_round2_3.csv";
   intrpl_pose_stream.open(intrpl_pose_file);
   intrpl_pose_stream << "timestamp,x,y,z,roll,pitch,yaw" << std::endl;
  #endif
@@ -217,12 +217,6 @@ int main(int argc, char** argv)
                              lidar_poses[lIdx].roll + interpolating_ratio * pose_diff.roll,
                              lidar_poses[lIdx].pitch + interpolating_ratio * pose_diff.pitch,
                              lidar_poses[lIdx].yaw + interpolating_ratio * pose_diff.yaw});
-    // std::cout << "Pose interpolated: " << interpolating_pose.x << ","
-    //                                    << interpolating_pose.y << ","
-    //                                    << interpolating_pose.z << ","
-    //                                    << interpolating_pose.roll << ","
-    //                                    << interpolating_pose.pitch << ","
-    //                                    << interpolating_pose.yaw << std::endl;
 
     #ifdef OUTPUT_INTERPOLATED_POSE
     intrpl_pose_stream << std::fixed << std::setprecision(0) 
@@ -317,24 +311,24 @@ int main(int argc, char** argv)
     scan_pub.publish(*scan_msg_ptr);
 
     // Convert pointcloud to txt file and save
-    std::ofstream pointcloud_stream;
-    pointcloud_stream.open(file_location + std::to_string(file_count) + ".txt");
-   #ifdef OFFSET_TRANSFORM
-    pcl::PointCloud<pcl::PointXYZI> localCloudOffset;
-    pcl::transformPointCloud(*localCloud, localCloudOffset, offset_tf);
-    for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = localCloudOffset.begin(); item != localCloudOffset.end(); item++)
-   #else
-    for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = localCloud->begin(); item != localCloud->end(); item++)
-   #endif
-    {
-      char output_buffer[1000];
-      double x = item->x;
-      double y = item->y;
-      double z = item->z;
-      int intensity = item->intensity;
-      sprintf(output_buffer, "%.10lf %.10lf %.10lf %d", x, y, z, intensity);
-      pointcloud_stream << output_buffer << std::endl;
-    }
+  //   std::ofstream pointcloud_stream;
+  //   pointcloud_stream.open(file_location + std::to_string(file_count) + ".txt");
+  //  #ifdef OFFSET_TRANSFORM
+  //   pcl::PointCloud<pcl::PointXYZI> localCloudOffset;
+  //   pcl::transformPointCloud(*localCloud, localCloudOffset, offset_tf);
+  //   for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = localCloudOffset.begin(); item != localCloudOffset.end(); item++)
+  //  #else
+  //   for(pcl::PointCloud<pcl::PointXYZI>::const_iterator item = localCloud->begin(); item != localCloud->end(); item++)
+  //  #endif
+  //   {
+  //     char output_buffer[1000];
+  //     double x = item->x;
+  //     double y = item->y;
+  //     double z = item->z;
+  //     int intensity = item->intensity;
+  //     sprintf(output_buffer, "%.10lf %.10lf %.10lf %d", x, y, z, intensity);
+  //     pointcloud_stream << output_buffer << std::endl;
+  //   }
     std::cout << "Saved " << localCloud->size() << " points to " + file_location + std::to_string(file_count) + ".txt" << std::endl;
     std::cout << "---------------------------------------------------------" << std::endl;
     file_count++;
