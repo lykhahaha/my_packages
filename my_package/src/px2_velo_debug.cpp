@@ -29,8 +29,8 @@ static void CallBack(const sensor_msgs::PointCloud2::ConstPtr& input)
 {
   pcl::PointCloud<pcl::PointXYZI> scan;
   pcl::PointCloud<lidar_pcl::PointXYZIR> scan_xyzir;
-  pcl::fromROSMsg(*input, scan);
-  pcl::copyPointCloud(scan, scan_xyzir);
+  lidar_pcl::fromROSMsg(*input, scan_xyzir);
+  // pcl::copyPointCloud(scan, scan_xyzir);
 
   for(pcl::PointCloud<lidar_pcl::PointXYZIR>::iterator item = scan_xyzir.begin(); item != scan_xyzir.end(); item++)
   {

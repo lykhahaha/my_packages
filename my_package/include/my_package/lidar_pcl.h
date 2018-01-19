@@ -92,7 +92,7 @@ namespace lidar_pcl
     lidar_pcl::PointXYZIR first_point(&msg.data[0]);
     float origin_angle = first_point.yaw();
     bool half_circle_check = false;
-    float stop_threshold = 45.0; // angle, in degree
+    float stop_threshold = 0.5; // angle, in degree
 
     // memcpy each group of contiguous fields separately
     for (uint32_t row = 0; row < msg.height; ++row)

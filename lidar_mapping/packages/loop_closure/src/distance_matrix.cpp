@@ -24,15 +24,18 @@ int scan_num = 0;
 
 double map2grayscale(double x)
 {
-  x *= 100;
+  x *= 200;
   return (x > 255 ? 255.0 : x);
 }
 
 void m2dpCallback(const sensor_msgs::PointCloud2::ConstPtr& input_msg)
 {
-  if(scan_num >= 1000)
+  if(input_msg->header.seq % 2 != 0)
+    return;
+
+  if(scan_num >= 2000)
   {
-    std::cout << "scan_num >= 1000, exitting..." << std::endl;
+    std::cout << "scan_num >= 2000, exitting..." << std::endl;
     return;
   }
 
@@ -46,7 +49,7 @@ void m2dpCallback(const sensor_msgs::PointCloud2::ConstPtr& input_msg)
   for(auto itr = input_cloud.begin(), itr_end = input_cloud.end(); itr != itr_end; itr++)
   {
     double rho = itr->x * itr->x + itr->y * itr->y;
-    if(rho > 3.0 && rho < 120.0)
+    if(rho > 3.2 && rho < 120.0)
     {
       processed_cloud.push_back(*itr);
     }
@@ -94,8 +97,9 @@ void m2dpCallback(const sensor_msgs::PointCloud2::ConstPtr& input_msg)
 
   // Display
   cv::imshow("m2dp distance matrix", cv_image);
+  cv::waitKey(10);
   std::chrono::time_point<std::chrono::system_clock> t2 = std::chrono::system_clock::now();
-  std::cout << "Callback took: " << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0 << "ms" << std::endl;
+  std::cout << "Frame: " << input_msg->header.seq << " took " << std::chrono::duration_cast<std::chrono::microseconds>(t2 - t1).count() / 1000.0 << "ms" << std::endl;
 
   // Update
   all_descriptors.conservativeResize(Eigen::NoChange, all_descriptors.cols() + 1);
@@ -107,11 +111,12 @@ int main(int argc, char** argv)
 {
   ros::init(argc, argv, "descriptor_visualizer");
   ros::NodeHandle nh;
-  ros::Subscriber pcl_sub = nh.subscribe("/velodyne_points", 1000, m2dpCallback);
+  ros::Subscriber pcl_sub = nh.subscribe("/points_raw", 1000, m2dpCallback);
 
   // Initialize
   cv::namedWindow("m2dp distance matrix", cv::WINDOW_AUTOSIZE);
   cv::startWindowThread();
+  cv::waitKey(10);
 
   // Run
   ros::spin();
