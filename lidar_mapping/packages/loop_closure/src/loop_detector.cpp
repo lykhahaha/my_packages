@@ -132,9 +132,9 @@ void m2dpCallback(const sensor_msgs::PointCloud2::ConstPtr& input_msg)
 
 int main(int argc, char** argv)
 {
-  ros::init(argc, argv, "descriptor_visualizer");
+  ros::init(argc, argv, "loop_detector");
   ros::NodeHandle nh;
-  ros::Subscriber pcl_sub = nh.subscribe("/points_raw", 1000, m2dpCallback);
+  ros::Subscriber pcl_sub = nh.subscribe("/velodyne_points", 1000, m2dpCallback);
 
   // Initialize
   cv::namedWindow("m2dp distance matrix", cv::WINDOW_AUTOSIZE);
